@@ -6,6 +6,8 @@
 - [`8-16饮食法App-基建与UI骨架.md`](./8-16饮食法App-基建与UI骨架.md)
 - [`8-16饮食法App-完整定义.md`](./8-16饮食法App-完整定义.md)
 - [`8-16饮食法App-流程图.md`](./8-16饮食法App-流程图.md)
+- [`UI原型/README.md`](./UI原型/README.md) — Agent 可读 UI 原型说明
+- [`UI原型/design-spec.md`](./UI原型/design-spec.md) — 类 Figma 精确设计规范（画布/令牌/组件/布局/状态/动效）
 
 Agent 工程规范补充（仓库内维护，非 Obsidian 副本）：
 

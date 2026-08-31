@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- 提醒相关权限（设计方案 §4 / 基建文档 §1.4） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -10,7 +9,7 @@
 
     <application
         android:name=".Fast16App"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -51,6 +50,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 通知「打卡」action 入口（导出关闭：仅内部 PendingIntent 触发） -->
+        <receiver
+            android:name=".core.receiver.CheckInReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ly.fast16.action.CHECK_IN" />
             </intent-filter>
         </receiver>
     </application>

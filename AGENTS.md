@@ -33,8 +33,11 @@
 | [`docs/font-licenses.md`](docs/font-licenses.md) | 内置字体授权记录：Press Start 2P / Fusion Pixel（OFL 可商用）+ 子集化方法 | 涉及字体/文案新增字符时必读 |
 | [`docs/kotlin-code-style.md`](docs/kotlin-code-style.md) | Kotlin 代码规范与命名规范（官方基准）：命名、源文件组织、格式化、KDoc、惯用法、项目红线 | 写/Review 任何 Kotlin 代码时必读 |
 | [`docs/r8-and-proguard.md`](docs/r8-and-proguard.md) | R8/混淆/keep 规则、新库引入、资源收缩规范（含枚举契约登记表） | 改构建配置、引新依赖、写反射/序列化/枚举持久化代码时必读 |
+| [`docs/UI原型/README.md`](docs/UI原型/README.md) | 从 `index.html` 提取的 Agent 可读 UI 原型说明 | 还原 UI、核对交互布局、实现页面/组件时 |
+| [`docs/UI原型/design-spec.md`](docs/UI原型/design-spec.md) | 类似 Figma 的精确设计规范：画布/令牌/组件/布局/状态/交互动效 | 需要像素级还原或视觉一致性评审时 |
+| `UI原型/index.html` | 原始可交互 HTML 原型（仍在 Obsidian Vault） | 需要人工打开预览或核对像素细节时 |
 
-> UI 原型（`UI原型/index.html`）原稿仍在 Obsidian Vault；如需仓库内可直接打开的原型，可再复制到 `docs/UI原型/`。
+> 仓库内已提供 Agent 可读版 `docs/UI原型/README.md`；原始 `UI原型/index.html` 仍保留在 Obsidian Vault。
 
 ---
 

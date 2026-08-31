@@ -1,19 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+  隐私红线（AGENTS.md §6 本地优先/隐私）：饮食数据不出设备，**云备份/设备迁移一律排除**。
+  Android 12+ 由本文件声明；<12 由 backup_rules.xml 声明。
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="root" path="." />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="root" path="." />
     </device-transfer>
-    -->
 </data-extraction-rules>

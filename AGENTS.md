@@ -32,6 +32,7 @@
 | [`docs/coroutines-best-practices.md`](docs/coroutines-best-practices.md) | 协程避坑与最佳实践：结构化并发、Dispatchers 注入、取消配合、CancellationException 重抛、测试 | 写/Review 任何并发与异步代码时必读 |
 | [`docs/font-licenses.md`](docs/font-licenses.md) | 内置字体授权记录：Press Start 2P / Fusion Pixel（OFL 可商用）+ 子集化方法 | 涉及字体/文案新增字符时必读 |
 | [`docs/kotlin-code-style.md`](docs/kotlin-code-style.md) | Kotlin 代码规范与命名规范（官方基准）：命名、源文件组织、格式化、KDoc、惯用法、项目红线 | 写/Review 任何 Kotlin 代码时必读 |
+| [`docs/r8-and-proguard.md`](docs/r8-and-proguard.md) | R8/混淆/keep 规则、新库引入、资源收缩规范（含枚举契约登记表） | 改构建配置、引新依赖、写反射/序列化/枚举持久化代码时必读 |
 
 > UI 原型（`UI原型/index.html`）原稿仍在 Obsidian Vault；如需仓库内可直接打开的原型，可再复制到 `docs/UI原型/`。
 
@@ -42,7 +43,8 @@
 | 任务 | 必读章节 |
 |------|----------|
 | 写/Review 任何 Kotlin 代码（命名/格式/KDoc/惯用法） | kotlin-code-style 全文 |
-| 修改 Gradle / 依赖版本 / 工程参数 | 基建与 UI 骨架 §1 |
+| 修改 Gradle / 依赖版本 / 工程参数 | 基建与 UI 骨架 §1；引新依赖/改 R8 配置另读 r8-and-proguard |
+| 引入新依赖 / 反射 / 序列化 / 枚举契约代码 | r8-and-proguard（敏感模式清单 + 契约登记表 + 门禁） |
 | 实现 Room 实体 / DAO / DataStore | 完整定义 第一部分；设计方案 §6 |
 | 实现候选生成、约束校验、状态机、统计 | 完整定义 第二部分；设计方案 §7；testing-best-practices §3（算法单测） |
 | 实现 Compose 页面 / 导航 / MVI 壳 | 基建与 UI 骨架 §2；设计方案 §5；compose-performance §2–§7 |
@@ -78,6 +80,7 @@ app/src/main/java/com/ly/fast16/
 ./gradlew :app:assembleDebug        # 构建 debug APK
 ./gradlew :app:testDebugUnitTest    # 单元测试
 ./gradlew :app:lintDebug            # lint
+./gradlew :app:assembleRelease      # release APK（全量 R8 + lintVitalRelease + 正式签名；mapping 产物在 build/outputs/mapping/release/）
 ```
 
 新增纯业务逻辑时，默认应同时补 JUnit 单元测试（`app/src/test/java/`），写法遵循 [`docs/testing-best-practices.md`](docs/testing-best-practices.md)：fake 优先、测行为不测实现、时钟注入。
@@ -105,6 +108,8 @@ app/src/main/java/com/ly/fast16/
 - **代码规范（import 优先，禁 FQN）**：任何类/函数必须**先 `import` 再使用**，禁止在代码体中写类名全量引用（FQN）——如 `com.ly.fast16.feature.home.ui.HomeViewModel()`、`androidx.compose.ui.graphics.Color.Black`、`org.koin.androidx.compose.koinViewModel()` 一律改为 import 后短名；KDoc 链接（`[ClassName]`）同样用 import 后的短名。仅 `package`/`import` 语句本身，以及描述旧包名/第三方名的注释文字可保留全限定形式。完整 Kotlin 代码规范与命名规范（命名、源文件组织、格式化、KDoc、惯用法）见 [`docs/kotlin-code-style.md`](docs/kotlin-code-style.md)。
 
 ---
+
+- **R8 与混淆红线**：release 已开启全量 R8（shrink+obfuscate+optimize）。新增反射 / `@Serializable` / 枚举持久化契约 / Manifest 组件 / 依赖，必须先读 [`docs/r8-and-proguard.md`](docs/r8-and-proguard.md) 并按规范评估 keep 与登记契约表；`app/src/main/keepRules/rules.keep` 的每条规则必须附理由注释；涉及构建/依赖改动必须过 `assembleRelease`（含 lintVitalRelease）门禁并审计 mapping 产物；签名信息只存 `local.properties`（已 gitignore），**禁止**写入任何入库文件；release APK 冒烟必须覆盖路由序列化、Room、DataStore、闹钟、通知链路。
 
 ## 7. 已确认的关键决策
 

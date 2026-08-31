@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -21,10 +23,32 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            // 签名信息从 local.properties 读取（已被 .gitignore 排除，避免密码入库）
+            val props = Properties().apply {
+                val f = rootProject.file("local.properties")
+                if (f.exists()) load(f.inputStream())
+            }
+            storeFile = props.getProperty("signing.storeFile")?.let { file(it) }
+            storePassword = props.getProperty("signing.storePassword")
+            keyAlias = props.getProperty("signing.keyAlias")
+            keyPassword = props.getProperty("signing.keyPassword")
+        }
+    }
+
     buildTypes {
         release {
+            // AGP 9 全量 R8（shrink + obfuscate + optimize），keep 规则见 src/main/keepRules/rules.keep
             optimization {
-                enable = false
+                enable = true
+            }
+            // 签名：local.properties 配置齐全用正式 release keystore；否则回退 debug 签名（CI/未配置场景，不可上架）
+            signingConfig = if (signingConfigs.getByName("release").storeFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("未找到 release 签名配置（local.properties），回退 debug 签名——该包不可用于上架")
+                signingConfigs.getByName("debug")
             }
         }
     }

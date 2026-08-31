@@ -1,12 +1,40 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
-#
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
+# =============================================================
+# Fast16 R8 keep 规则（基线）
+# AGP 9 会自动合并 src/main/keepRules/*.keep 传入 R8。
+# 书写规范与「枚举字符串契约登记表」见 docs/r8-and-proguard.md。
+# 每条规则必须保留理由注释（依赖方 + 不可删除原因）。
+# =============================================================
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# ---- 崩溃栈可读性 ----
+# 保留源文件名与行号（本地 App，体积不敏感）；release 崩溃栈可配合
+# build/outputs/mapping/release/mapping.txt 解混淆定位问题
+-keepattributes SourceFile, LineNumberTable
+
+# ---- kotlinx.serialization 兜底（Navigation type-safe 路由 @Serializable）----
+# 依赖库自带 consumer rules（kotlinx-serialization-core >= 1.5 / navigation-common），
+# 以下为版本防护兜底，防止依赖升级破坏序列化发现机制
+-keepattributes *Annotation*, InnerClasses, EnclosingMethod
+# 保留生成的序列化器类（如 HomeRoute$$serializer）：R8 重命名/删除会破坏运行时序列化
+-keep,includedescriptorclasses class com.ly.fast16.**$$serializer { *; }
+# 保留 @Serializable 类名：serialName 是编译期字符串字面量，类名与序列化字符串
+# 不能解耦（SavedState/进程重建恢复、未来 deep link 的防御性契约）
+-keep @kotlinx.serialization.Serializable class com.ly.fast16.** { *; }
+
+# ---- 枚举字符串契约 ----
+# DataStore / Intent extra / Room 列均依赖枚举 name/valueOf/ordinal 的字符串稳定性：
+#   MealPhase   -> AlarmReceiver 从 PendingIntent extra 还原（AlarmReceiver.kt:40）
+#   ReminderMode-> SettingsStore 写/读 DataStore（SettingsStore.kt:59,82）
+#   PlanStatus / MealType / MealStatus -> Room 实体枚举列 + 状态机（Entities.kt）
+#   MealType.ordinal -> 闹钟 requestCode 契约（PlanScheduler.kt:41）
+# allowshrinking：保留类名与成员（防未来反射 / @Serializable 枚举场景），
+# 允许 R8 确认完全无用后移除（当前 5 个枚举成本约等于 0）
+-keep,allowshrinking enum com.ly.fast16.domain.model.** { *; }
+
+# ---- WorkManager（Glance 传递依赖，androidx.startup 自动初始化）----
+# 项目未直接使用 WorkManager，但 glance-appwidget:1.1.1 传递引入 work-runtime:2.7.1，
+# 且 androidx.startup 的 InitializationProvider 会在启动时自动初始化
+# WorkManagerInitializer -> 创建 WorkDatabase（Room 2.x）。
+# R8 会把未使用的 WorkDatabase 抽象方法 / _Impl 实现裁剪掉，导致
+# "Failed to create an instance of androidx.work.impl.WorkDatabase" 冷启动崩溃。
+# 保持整个 work 包；待 Glance widget 落地（真实使用 WorkManager）后可评估收敛此规则。
+-keep class androidx.work.** { *; }

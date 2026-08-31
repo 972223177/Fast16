@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fast16 像素风: 纯色面板底 #1a1c2c (设计方案 §8.2) -->
+<!-- Fast16 像素风背景: 中心深蓝圆盘 #1a1c2c（含像素网格 #242739）+ 外围透明
+     圆盘化使方形/圆形 launcher mask 下视觉主体一致（圆盘+小人），消除纯色满铺板的"边框"割裂感
+     半径 50dp 圆心 54,54；网格线限定在圆内接方形区 x24-84 y24-84 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- 中心深蓝圆盘（半径 54.5 > 圆形 mask 54：圆形下完全无缝无边框；方形下四角仍约 22dp 透明） -->
     <path
         android:fillColor="#1a1c2c"
-        android:pathData="M0,0h108v108h-108z" />
+        android:pathData="M54,-0.5a54.5,54.5 0 1,0 0.1,0z" />
+    <!-- 圆盘内像素网格线（2dp 线，12dp 间距，全在圆盘内） -->
+    <path
+        android:fillColor="#242739"
+        android:pathData="M24,24h2v60h-2z M36,24h2v60h-2z M48,24h2v60h-2z M60,24h2v60h-2z M72,24h2v60h-2z M84,24h2v60h-2z M24,24h60v2h-60z M24,36h60v2h-60z M24,48h60v2h-60z M24,60h60v2h-60z M24,72h60v2h-60z M24,84h60v2h-60z" />
 </vector>

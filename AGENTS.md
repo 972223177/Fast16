@@ -30,6 +30,7 @@
 | [`docs/pixel-motion-guidelines.md`](docs/pixel-motion-guidelines.md) | 像素风交互动效规范：阶跃帧、时长/节奏、整数像素、反馈手法、Compose 实现约束 | 实现/Review 交互与动效时必读 |
 | [`docs/compat-api24-37.md`](docs/compat-api24-37.md) | API 24–37 兼容性避坑：各版本权限收紧、行为变更、本项目红线清单 | 写权限/通知/闹钟/系统交互代码前必读 |
 | [`docs/coroutines-best-practices.md`](docs/coroutines-best-practices.md) | 协程避坑与最佳实践：结构化并发、Dispatchers 注入、取消配合、CancellationException 重抛、测试 | 写/Review 任何并发与异步代码时必读 |
+| [`docs/font-licenses.md`](docs/font-licenses.md) | 内置字体授权记录：Press Start 2P / Fusion Pixel（OFL 可商用）+ 子集化方法 | 涉及字体/文案新增字符时必读 |
 | [`docs/kotlin-code-style.md`](docs/kotlin-code-style.md) | Kotlin 代码规范与命名规范（官方基准）：命名、源文件组织、格式化、KDoc、惯用法、项目红线 | 写/Review 任何 Kotlin 代码时必读 |
 
 > UI 原型（`UI原型/index.html`）原稿仍在 Obsidian Vault；如需仓库内可直接打开的原型，可再复制到 `docs/UI原型/`。

@@ -17,6 +17,7 @@ local.properties
 
 # --- 本地工具数据 ---
 .codegraph/
+.codebuddy/
 
 # --- 构建产物文件 ---
 *.apk

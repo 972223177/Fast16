@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- 版本锁定策略：基建文档 §1.2 钉死版本（AGP 9.3.0 / Kotlin 2.2.20 / KSP 2.2.20-2.0.3 /
+         Compose BOM 2026.08.00 / Room 3.0.1 等），"M0 首次 sync 锁 patch"；
+         升级需随里程碑评审（避免 KSP/AGP/Kotlin 配套失配），日常构建不追新版本提示 -->
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
+
+    <!-- 模板遗留 launcher 前景图标（Android Studio 新建工程自带），替换 App 图标时一并处理 -->
+    <issue id="IconLocation">
+        <ignore path="**/drawable/ic_launcher_foreground.xml" />
+    </issue>
+</lint>

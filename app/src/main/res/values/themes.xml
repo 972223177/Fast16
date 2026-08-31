@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Fast16" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- 深色像素风：Compose 接管 UI，原生主题只提供无 ActionBar 深色底，
+         windowBackground 用像素 bg 色避免冷启动白屏闪烁 -->
+    <style name="Theme.Fast16" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/pixel_bg</item>
+        <item name="android:statusBarColor">@color/pixel_bg</item>
+        <item name="android:navigationBarColor">@color/pixel_panel</item>
+    </style>
 </resources>

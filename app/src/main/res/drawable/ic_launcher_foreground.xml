@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fast16 启动器前景：像素角色「小健」剪影（设计方案 §8.2 调色板 + §8.6 角色基线）
+     发 #4a3424 / 肤 #f4c2a0 / 运动服 #41a6f6 / 纽扣 #ffcd75 / 鞋 #38b764
+     16×14 像素格 × 4dp，居中于 108dp 安全区 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 发 -->
+    <path
+        android:fillColor="#4a3424"
+        android:pathData="M38,26h16v4h-16z M34,30h24v4h-24z" />
+    <!-- 肤 -->
+    <path
+        android:fillColor="#f4c2a0"
+        android:pathData="M34,34h24v4h-24z M34,38h24v4h-24z M34,42h24v4h-24z" />
+    <!-- 运动服 -->
+    <path
+        android:fillColor="#41a6f6"
+        android:pathData="M30,46h32v4h-32z M30,50h32v4h-32z M30,54h4v4h-4z M38,54h16v4h-16z M58,54h4v4h-4z M30,58h32v4h-32z M26,62h40v4h-40z M26,66h40v4h-40z M30,70h32v4h-32z M30,74h32v4h-32z" />
+    <!-- 纽扣 -->
+    <path
+        android:fillColor="#ffcd75"
+        android:pathData="M34,54h4v4h-4z M54,54h4v4h-4z" />
+    <!-- 鞋 -->
+    <path
+        android:fillColor="#38b764"
+        android:pathData="M30,78h32v4h-32z" />
+</vector>

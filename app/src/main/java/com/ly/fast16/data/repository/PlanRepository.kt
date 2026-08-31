@@ -1,0 +1,117 @@
+package com.ly.fast16.data.repository
+
+import androidx.room3.withWriteTransaction
+import com.ly.fast16.core.time.Time
+import com.ly.fast16.data.local.AppDatabase
+import com.ly.fast16.data.local.MealDao
+import com.ly.fast16.data.local.MealEntity
+import com.ly.fast16.data.local.MealPlanDao
+import com.ly.fast16.data.local.MealPlanEntity
+import com.ly.fast16.domain.model.Meal
+import com.ly.fast16.domain.model.MealPlan
+import com.ly.fast16.domain.model.MealStatus
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+
+/**
+ * 就餐计划仓储接口（跨 feature 共享，feature 间禁止横向依赖的唯一入口）。
+ */
+interface PlanRepository {
+
+    /** 观测某日计划（含三餐），无计划时为 null */
+    fun watchPlanByDate(date: LocalDate): Flow<Pair<MealPlan, List<Meal>>?>
+
+    /** 观测某日三餐 */
+    fun watchMealsByDate(date: LocalDate): Flow<List<Meal>>
+
+    /** 生成 / 覆盖某日计划（计划 + 三餐原子写入，返回 planId） */
+    suspend fun savePlan(plan: MealPlan, meals: List<Meal>): Long
+
+    /** 删除计划（FK CASCADE 级联删三餐） */
+    suspend fun deletePlan(planId: Long)
+
+    /** 更新单餐状态（reconcile / 打卡联动置 COMPLETED） */
+    suspend fun updateMealStatus(mealId: Long, status: MealStatus)
+}
+
+/**
+ * Room 本地实现。SSOT：UI 只订阅 Flow；写入一律 upsert。
+ * 时钟仅用于 createdAtEpoch，注入 Clock 保证可测。
+ */
+class LocalPlanRepository(
+    private val db: AppDatabase,
+    private val clock: Clock,
+) : PlanRepository {
+
+    private val planDao: MealPlanDao = db.mealPlanDao()
+    private val mealDao: MealDao = db.mealDao()
+
+    override fun watchPlanByDate(date: LocalDate): Flow<Pair<MealPlan, List<Meal>>?> {
+        val dateStr = Time.formatDate(date)
+        return planDao.watchByDate(dateStr)
+            .combine(mealDao.watchByDate(dateStr)) { planEntity, mealEntities ->
+                planEntity?.toDomain()?.let { plan -> plan to mealEntities.map { it.toDomain() } }
+            }
+    }
+
+    override fun watchMealsByDate(date: LocalDate): Flow<List<Meal>> =
+        mealDao.watchByDate(Time.formatDate(date)).map { list -> list.map { it.toDomain() } }
+
+    override suspend fun savePlan(plan: MealPlan, meals: List<Meal>): Long =
+        db.withWriteTransaction {
+            val planId = planDao.upsert(plan.toEntity())
+            mealDao.upsertAll(meals.map { it.copy(planId = planId).toEntity() })
+            planId
+        }
+
+    override suspend fun deletePlan(planId: Long) = planDao.deleteById(planId)
+
+    override suspend fun updateMealStatus(mealId: Long, status: MealStatus) =
+        mealDao.updateStatus(mealId, status.value)
+
+    // ---------- Entity ↔ Domain 映射（epoch/String 存储层，Instant/LocalDate 领域层） ----------
+
+    private fun MealPlanEntity.toDomain() = MealPlan(
+        id = id,
+        date = Time.parseDate(date),
+        windowStart = toMinuteInstant(windowStartEpoch),
+        windowEnd = toMinuteInstant(windowEndEpoch),
+        status = status,
+    )
+
+    private fun MealPlan.toEntity() = MealPlanEntity(
+        id = id,
+        date = Time.formatDate(date),
+        windowStartEpoch = windowStart.toEpochMilli(),
+        windowEndEpoch = windowEnd.toEpochMilli(),
+        status = status,
+        createdAtEpoch = clock.millis(),
+    )
+
+    private fun MealEntity.toDomain() = Meal(
+        id = id,
+        planId = planId,
+        type = type,
+        mealTime = toMinuteInstant(mealTimeEpoch),
+        prepMinutes = prepMinutes,
+        status = status,
+        reminderMode = reminderMode,
+    )
+
+    private fun Meal.toEntity() = MealEntity(
+        id = id,
+        planId = planId,
+        type = type,
+        mealTimeEpoch = mealTime.toEpochMilli(),
+        prepMinutes = prepMinutes,
+        status = status,
+        reminderMode = reminderMode,
+    )
+
+    private fun toMinuteInstant(epochMilli: Long): Instant =
+        Time.alignToMinute(Instant.ofEpochMilli(epochMilli))
+}

@@ -31,13 +31,22 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // domain 层使用 java.time（minSdk 24 < 26），必须开启核心库脱糖
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
     }
 }
 
+ksp {
+    // Room schema JSON 导出（迁移测试基准，完整定义 §1.6）
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
+    coreLibraryDesugaring(libs.tools.desugar.jdk.libs)
+
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

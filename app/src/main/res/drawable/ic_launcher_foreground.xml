@@ -1,31 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fast16 启动器前景：像素角色「小健」剪影（设计方案 §8.2 调色板 + §8.6 角色基线）
-     发 #4a3424 / 肤 #f4c2a0 / 运动服 #41a6f6 / 纽扣 #ffcd75 / 鞋 #38b764
-     16×14 像素格 × 4dp，居中于 108dp 安全区 -->
+<!-- Fast16 启动器前景：像素角色「小健」举牌「8:16」（核心理念：8 小时进食 / 16 小时断食）
+     呼应设计方案 §8.8 引导场景「角色小健举牌出场」；调色板 §8.2
+     牌框/纽扣 #ffcd75 主黄 / 牌底/眼睛 #0f0f1a / 数字 #f4f4f4 / 发 #4a3424 / 肤 #f4c2a0 /
+     运动服 #41a6f6 主蓝 / 鞋 #38b764 主绿
+     17×22 像素格 × 3dp（51×66dp）；人型比例：头宽6/肩宽10/腰宽8/腿分开；「8:16」左右对称；
+     居中于 108dp 安全区 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- 牌框 + 纽扣（主黄） -->
+    <path
+        android:fillColor="#ffcd75"
+        android:pathData="M28,21h51v3h-51z M28,24h3v3h-3z M76,24h3v3h-3z M28,27h3v3h-3z M76,27h3v3h-3z M28,30h3v3h-3z M76,30h3v3h-3z M28,33h3v3h-3z M76,33h3v3h-3z M28,36h3v3h-3z M76,36h3v3h-3z M28,39h3v3h-3z M76,39h3v3h-3z M28,42h3v3h-3z M76,42h3v3h-3z M28,45h51v3h-51z M46,75h3v3h-3z M55,75h3v3h-3z" />
+    <!-- 牌底 -->
+    <path
+        android:fillColor="#0f0f1a"
+        android:pathData="M31,24h45v3h-45z M31,27h6v3h-6z M46,27h9v3h-9z M58,27h3v3h-3z M70,27h6v3h-6z M31,30h6v3h-6z M40,30h3v3h-3z M46,30h9v3h-9z M58,30h3v3h-3z M64,30h12v3h-12z M31,33h6v3h-6z M46,33h3v3h-3z M52,33h3v3h-3z M58,33h3v3h-3z M70,33h6v3h-6z M31,36h6v3h-6z M40,36h3v3h-3z M46,36h9v3h-9z M58,36h3v3h-3z M64,36h3v3h-3z M70,36h6v3h-6z M31,39h6v3h-6z M46,39h9v3h-9z M58,39h3v3h-3z M70,39h6v3h-6z M31,42h45v3h-45z" />
+    <!-- 数字 8:16（白，左右对称） -->
+    <path
+        android:fillColor="#f4f4f4"
+        android:pathData="M37,27h9v3h-9z M55,27h3v3h-3z M61,27h9v3h-9z M37,30h3v3h-3z M43,30h3v3h-3z M55,30h3v3h-3z M61,30h3v3h-3z M37,33h9v3h-9z M49,33h3v3h-3z M55,33h3v3h-3z M61,33h9v3h-9z M37,36h3v3h-3z M43,36h3v3h-3z M55,36h3v3h-3z M61,36h3v3h-3z M67,36h3v3h-3z M37,39h9v3h-9z M55,39h3v3h-3z M61,39h9v3h-9z" />
     <!-- 发 -->
     <path
         android:fillColor="#4a3424"
-        android:pathData="M38,26h16v4h-16z M34,30h24v4h-24z" />
-    <!-- 肤 -->
+        android:pathData="M43,57h18v3h-18z" />
+    <!-- 眼睛 -->
+    <path
+        android:fillColor="#0f0f1a"
+        android:pathData="M46,63h3v3h-3z M55,63h3v3h-3z" />
+    <!-- 肤（脸 + 双手） -->
     <path
         android:fillColor="#f4c2a0"
-        android:pathData="M34,34h24v4h-24z M34,38h24v4h-24z M34,42h24v4h-24z" />
-    <!-- 运动服 -->
+        android:pathData="M37,48h3v3h-3z M64,48h3v3h-3z M37,51h3v3h-3z M64,51h3v3h-3z M37,54h3v3h-3z M64,54h3v3h-3z M37,57h3v3h-3z M64,57h3v3h-3z M37,60h3v3h-3z M43,60h18v3h-18z M64,60h3v3h-3z M37,63h3v3h-3z M43,63h3v3h-3z M49,63h6v3h-6z M58,63h3v3h-3z M64,63h3v3h-3z M37,66h3v3h-3z M43,66h18v3h-18z M64,66h3v3h-3z" />
+    <!-- 运动服（主蓝） -->
     <path
         android:fillColor="#41a6f6"
-        android:pathData="M30,46h32v4h-32z M30,50h32v4h-32z M30,54h4v4h-4z M38,54h16v4h-16z M58,54h4v4h-4z M30,58h32v4h-32z M26,62h40v4h-40z M26,66h40v4h-40z M30,70h32v4h-32z M30,74h32v4h-32z" />
-    <!-- 纽扣 -->
-    <path
-        android:fillColor="#ffcd75"
-        android:pathData="M34,54h4v4h-4z M54,54h4v4h-4z" />
-    <!-- 鞋 -->
+        android:pathData="M37,69h30v3h-30z M37,72h30v3h-30z M37,75h9v3h-9z M49,75h6v3h-6z M58,75h9v3h-9z M40,78h24v3h-24z M40,81h9v3h-9z M55,81h9v3h-9z" />
+    <!-- 鞋（主绿，分开） -->
     <path
         android:fillColor="#38b764"
-        android:pathData="M30,78h32v4h-32z" />
+        android:pathData="M37,84h12v3h-12z M55,84h12v3h-12z" />
 </vector>

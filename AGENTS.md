@@ -25,6 +25,8 @@
 | [`docs/8-16饮食法App-基建与UI骨架.md`](docs/8-16饮食法App-基建与UI骨架.md) | M0 定稿：Gradle 参数、依赖版本、路由、MVI 页面壳、Pixel 组件清单 | 搭工程、改 Gradle、搭 UI 骨架时 |
 | [`docs/8-16饮食法App-完整定义.md`](docs/8-16饮食法App-完整定义.md) | DDL、DAO、DataStore Schema、算法伪码、页面组件与动效分镜 | 实现数据层、领域算法、像素组件时 |
 | [`docs/8-16饮食法App-流程图.md`](docs/8-16饮食法App-流程图.md) | Mermaid 流程：主流程、候选生成、状态机、提醒、统计 | 梳理业务流或写用例时 |
+| [`docs/compose-performance.md`](docs/compose-performance.md) | Compose 性能避坑：稳定性/不可变类、状态提升、延迟读取、derivedStateOf、LazyColumn key、strong skipping | 写/Review 任何 Compose UI 代码时必读 |
+| [`docs/testing-best-practices.md`](docs/testing-best-practices.md) | 测试最佳实践：测试金字塔、fake 优先、MVI 分层测试、Compose UI 测试、Room 迁移测试 | 写/Review 测试代码时必读 |
 
 > UI 原型（`UI原型/index.html`）原稿仍在 Obsidian Vault；如需仓库内可直接打开的原型，可再复制到 `docs/UI原型/`。
 
@@ -36,9 +38,9 @@
 |------|----------|
 | 修改 Gradle / 依赖版本 / 工程参数 | 基建与 UI 骨架 §1 |
 | 实现 Room 实体 / DAO / DataStore | 完整定义 第一部分；设计方案 §6 |
-| 实现候选生成、约束校验、状态机、统计 | 完整定义 第二部分；设计方案 §7 |
-| 实现 Compose 页面 / 导航 / MVI 壳 | 基建与 UI 骨架 §2；设计方案 §5 |
-| 实现像素组件 / 主题 / 动效 | 基建与 UI 骨架 §2.1–2.4；设计方案 §8 |
+| 实现候选生成、约束校验、状态机、统计 | 完整定义 第二部分；设计方案 §7；testing-best-practices §3（算法单测） |
+| 实现 Compose 页面 / 导航 / MVI 壳 | 基建与 UI 骨架 §2；设计方案 §5；compose-performance §2–§7 |
+| 实现像素组件 / 主题 / 动效 | 基建与 UI 骨架 §2.1–2.4；设计方案 §8；compose-performance §1–§4 |
 | 实现提醒 / 闹钟 / 重启自愈 | 设计方案 §5.3；流程图 §6–7 |
 | 实现记录页 / 日历 / 统计 | 设计方案 §2.1 FR-13/14、§6.4–6.5、§8.7 |
 | 实现 Widget | 设计方案 §8.7；基建与 UI 骨架 §1.4 |
@@ -72,7 +74,7 @@ app/src/main/java/com/ly/fast16/
 ./gradlew :app:lintDebug            # lint
 ```
 
-新增纯业务逻辑时，默认应同时补 JUnit 单元测试（`app/src/test/java/`）。
+新增纯业务逻辑时，默认应同时补 JUnit 单元测试（`app/src/test/java/`），写法遵循 [`docs/testing-best-practices.md`](docs/testing-best-practices.md)：fake 优先、测行为不测实现、时钟注入。
 
 ---
 
@@ -83,6 +85,8 @@ app/src/main/java/com/ly/fast16/
 - **SSOT**：UI 只订阅 DAO 的 `Flow`；一切写入走 `upsert`；禁止内存副本手动同步。
 - **派生字段不落库**：`prepTime` 由 `mealTime - prepMinutes` 派生；角色状态由“当前时间 × 今日计划”派生；连续打卡由 `check_ins` 聚合派生。
 - **Room 纪律**：枚举存 `Int` + TypeConverter；字符串列加长度约束；改表必须升 `schemaVersion` 并写迁移。
+- **Compose Preview 必写**：每个自定义 Compose 组件、每个 Screen（页面级）都必须编写 `@Preview`，并在 Preview 中注入主题（如 `Fast16Theme`）与必要的假数据，保证可在 Android Studio / Compose Preview 中独立渲染。纯业务容器（无视觉输出）除外。
+- **Compose 性能规范**：UI 代码遵循 [`docs/compose-performance.md`](docs/compose-performance.md)——UI State 用不可变 data class（集合用 `ImmutableList` 或 Wrapper）；LazyColumn 必写稳定 `key`；组合期间禁止写状态（向后写入）；频繁变化的状态用 lambda 版修饰符读取；Review 按该文档逐条核对。
 - **像素风规范**：业务组件只引用 `PixelTokens`，不直接引用 M3 默认值；整数像素网格；动画走步进/阶跃；渲染用 `FilterQuality.none` + 整数倍缩放。
 - **原生 API 兼容性（采纳前必查 min–target）**：调用任何 Android 原生 API（SDK 方法、系统服务、Manifest 特性/权限）前，必须先核对 `minSdk 24 ~ targetSdk 37` 全区间兼容性（如 `@RequiresApi` / `Build.VERSION` 门控、行为变更影响）。**只有全区间兼容，方案才可采纳**；若不兼容，必须补充兼容方案（版本分支、替代实现、降级路径、`core/` 内封装兜底），禁止在 feature 层散落裸版本判断。
 - **兼容方案下沉 `core/`**：原生 API 的版本差异处理一律封装进 `core/`（如 `core/device`、`core/system`），对外暴露统一抽象入口；feature 层只依赖该入口，不得直接写 `Build.VERSION` 分支或 `@SuppressLint("NewApi")`。

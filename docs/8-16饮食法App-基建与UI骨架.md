@@ -18,7 +18,7 @@
 | 语言 | Kotlin 2.2.x | Compose 编译器随 Kotlin 内置（`kotlin-compose` 插件） |
 | AGP | **9.3.0** | 2026-07 稳定版 |
 | minSdk | **24** | Room 3.0 要求 ≥23，取 24 留余量 |
-| compileSdk / targetSdk | **36** | Android 16（已定） |
+| compileSdk / targetSdk | **37** | Android 17（已定；随 Room 3.0 ≥23 约束取 minSdk 24） |
 | applicationId | `com.ly.fast16` | 已定 |
 | 应用英文名 | **Fast16** | 品牌名；Application 类名 `Fast16App` |
 | 应用显示名 | 「**816 轻断食**」 | 无冒号，`8:16` 以 `816` 呈现 |
@@ -44,6 +44,8 @@ activityCompose = "1.10.1"
 coreKtx = "1.18.0"
 glance = "1.1.1"
 junit = "4.13.2"
+junitVersion = "1.3.0"
+espressoCore = "3.5.1"
 turbine = "1.2.1"
 robolectric = "4.16"
 
@@ -62,27 +64,29 @@ lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-ru
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
 koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koin" }
-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+room-runtime = { group = "androidx.room3", name = "room3-runtime", version.ref = "room" }
+room-compiler = { group = "androidx.room3", name = "room3-compiler", version.ref = "room" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 ```
 
-> 硬确认：`agp=9.3.0`、`kotlin=2.2`、`room=3.0.x`、Compose BOM 月更；其余 patch 在 M0 首次 `./gradlew sync` 时锁定并回写本文档。
+> 硬确认：`agp=9.3.0`、`kotlin=2.2`、`room=3.0.x`、Compose BOM 月更；版本已随 M0 首次 sync 锁定并与实际 `gradle/libs.versions.toml` 对齐（2026-08-31）。注意：**AGP 9 内置 Kotlin，无 `kotlin-android` 插件**；**Room 3.0 走 `androidx.room3:room3-*` 坐标**（无独立 `room-ktx`，Flow 支持已内置）；测试补齐 androidx-test（junit/ext 1.3.0、espresso 3.5.1）与 Compose UI Test（BOM 管理）。
 
 ### 1.3 基建组件契约（骨架）
 
@@ -112,7 +116,7 @@ interface ReminderChannel {
 
 | 基建组件 | 契约/职责 | 归属层 |
 |----------|-----------|--------|
-| `Fast16Application` | `startKoin` 装配 3 个 module | app |
+| `Fast16App` | `startKoin` 装配 3 个 module（Manifest `android:name` 挂载 M0 落地时补） | app |
 | `AppDatabase` | Room `@Database`（3 实体 + 3 DAO，`schemaVersion=1`） | data |
 | `SettingsStore` | DataStore 封装：Flow 读 + suspend 写（§1.5 偏好清单） | data |
 | `PlanRepository` / `CheckInRepository` | 接口 + 本地实现 | data/domain |
@@ -147,7 +151,8 @@ interface ReminderChannel {
 
 **形状**（`PixelShape`）：像素阶梯圆角（`cornerSteps=3`，即 3 个 2px 台阶）+ 2px 黑描边。
 
-**动效**（`PixelMotion`）：步进帧 `120ms/帧`；闪烁 `200ms × 3`；弹窗弹出 `60ms × 3 步`；转场 wipe `200ms`。
+**动效**（`PixelMotion`）：步进帧 `120ms/帧`；闪烁 `2 帧 ~400ms 循环`；弹窗/页面过渡 `3–4 帧 ~150ms`（出场 `1–2 帧 ~80ms`）。
+> 场景规格与手法以 [`pixel-motion-guidelines.md`](pixel-motion-guidelines.md) 为准，本文为 token 定值来源；冲突时先改该文档再回写此处。
 
 > 落地：M3 `ColorScheme` 由 `PixelColors` 覆写；业务组件只引用 tokens，不引用 M3 默认值。
 
@@ -215,6 +220,6 @@ Onboarding：不作为路由，由根层 overlay 触发（onboarding_seen==false
 | 1 | applicationId | `com.ly.fast16` |
 | 2 | 应用英文名 | **Fast16**（`Fast16App`） |
 | 3 | 应用显示名 | 「**816 轻断食**」（无冒号） |
-| 4 | targetSdk | **36** |
+| 4 | targetSdk | **37** |
 
 > 命名已定，M0 可直接按本文件 `gradle init` 起工程。

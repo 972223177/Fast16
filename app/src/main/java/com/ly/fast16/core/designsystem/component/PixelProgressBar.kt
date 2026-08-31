@@ -14,28 +14,28 @@ import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 
 /**
- * 像素分块进度条（设计方案 §8.5）：分块逐格点亮，不做平滑填充。
+ * 像素分块进度条（设计方案 §8.5 / spec 3.4 .seg）：分块逐格点亮，不做平滑填充。
  * 进度 = floor(progress × segments)，整数格点亮。
  *
  * @param segments 总格数（断食进度常用 16）
- * @param segmentWidth / [segmentHeight] 单格尺寸（8px 网格）
+ * @param segmentWidth / [segmentHeight] 单格尺寸（spec：9×16px，gap 3px）
  * @param litColor 点亮色（进行中/成功用绿，待处理用黄）
- * @param unlitColor 未点亮色（面板底）
+ * @param unlitColor 未点亮色（spec .seg i：#23263a）
  */
 @Composable
 fun PixelProgressBar(
     progress: Float,
     modifier: Modifier = Modifier,
     segments: Int = 16,
-    segmentWidth: Dp = 6.dp,
-    segmentHeight: Dp = 14.dp,
+    segmentWidth: Dp = 8.dp,
+    segmentHeight: Dp = 16.dp,
     litColor: Color = PixelColors.green,
-    unlitColor: Color = PixelColors.panel,
+    unlitColor: Color = Color(0xFF23263A),
 ) {
     val lit = (progress.coerceIn(0f, 1f) * segments).toInt()
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         repeat(segments) { i ->
             Box(

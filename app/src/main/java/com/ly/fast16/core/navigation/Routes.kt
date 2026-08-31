@@ -6,15 +6,18 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -24,6 +27,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.ly.fast16.core.designsystem.component.PixelSprite
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelShape
@@ -83,6 +87,7 @@ fun Fast16NavHost(modifier: Modifier = Modifier) {
             composable<HomeRoute> {
                 HomeScreen(
                     onNewPlan = { navController.navigate(CreateRoute) },
+                    onOpenRecord = { navController.navigateTab(RecordRoute) },
                 )
             }
             composable<CreateRoute> {
@@ -112,7 +117,7 @@ private fun NavHostController.navigateTab(route: Any) {
     }
 }
 
-/** 像素风底部导航栏：选中项主黄描边（基建文档 §2.2） */
+/** 像素风底部导航栏：像素图标 + 文字，选中项主黄描边（原型 .app-tabs / .tab） */
 @Composable
 private fun PixelBottomBar(
     currentDestination: NavDestination?,
@@ -120,9 +125,9 @@ private fun PixelBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val tabs = listOf(
-        "首页" to HomeRoute,
-        "记录" to RecordRoute,
-        "设置" to SettingsRoute,
+        Triple("首页", HomeRoute, TAB_ICON_HOME),
+        Triple("记录", RecordRoute, TAB_ICON_RECORD),
+        Triple("设置", SettingsRoute, TAB_ICON_SETTINGS),
     )
 
     Row(
@@ -134,10 +139,11 @@ private fun PixelBottomBar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        tabs.forEach { (label, route) ->
+        tabs.forEach { (label, route, icon) ->
             val selected = currentDestination?.hierarchy?.any { it.hasRoute(route::class) } == true
             val borderColor = if (selected) PixelColors.yellow else Color.Transparent
-            Box(
+            val fg = if (selected) PixelColors.yellow else PixelColors.gray
+            Column(
                 modifier = Modifier
                     .clickable { onSelect(route) }
                     .border(BorderStroke(PixelShape.borderWidth, borderColor))
@@ -145,14 +151,77 @@ private fun PixelBottomBar(
                         horizontal = PixelShape.Spacing.md,
                         vertical = PixelShape.Spacing.xs,
                     ),
-                contentAlignment = Alignment.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                PixelSprite(
+                    rows = icon,
+                    palette = mapOf('K' to fg),
+                    modifier = Modifier.size(18.dp),
+                )
                 PixelText(
                     text = label,
-                    color = if (selected) PixelColors.white else PixelColors.gray,
+                    color = fg,
                     fontSize = PixelType.Size.xs,
                 )
             }
         }
     }
 }
+
+/** 底部 Tab 像素图标（16×16 点阵，K=前景色；原型 .tab .t-ico 18×18） */
+private val TAB_ICON_HOME = listOf(
+    "................",
+    "................",
+    "......KKKK......",
+    ".....KKKKKK.....",
+    "....KKKKKKKK....",
+    "...KKKKKKKKKK...",
+    "..K..KKKKKK..K..",
+    "..K..K....K..K..",
+    "..K..K....K..K..",
+    "..K..K....K..K..",
+    "..K..K....K..K..",
+    "..K..K....K..K..",
+    "..K..K....K..K..",
+    "..K..KKKKKK..K..",
+    "..KKKKKKKKKKKK..",
+    "................",
+)
+
+private val TAB_ICON_RECORD = listOf(
+    "................",
+    "..KKKKKKKKKKKK..",
+    "..K..........K..",
+    "..K.KKKKKKKK.K..",
+    "..K.K......K.K..",
+    "..K.K..KK..K.K..",
+    "..K.K..KK..K.K..",
+    "..K.K..KK..K.K..",
+    "..K.K..KK..K.K..",
+    "..K.K..KK..K.K..",
+    "..K.K..KK..K.K..",
+    "..K.K......K.K..",
+    "..K.KKKKKKKK.K..",
+    "..K..........K..",
+    "..KKKKKKKKKKKK..",
+    "................",
+)
+
+private val TAB_ICON_SETTINGS = listOf(
+    "................",
+    "................",
+    "......KKKK......",
+    ".....KKKKKK.....",
+    "....KKKKKKKK....",
+    "...KKKKKKKKKK...",
+    "..KKKKKKKKKKKK..",
+    "..KK.KKKKKK.KK..",
+    "..KK.KKKKKK.KK..",
+    "..KKKKKKKKKKKK..",
+    "..KKKKKKKKKKKK..",
+    "...KKKKKKKKKK...",
+    "....KKKKKKKK....",
+    ".....KKKKKK.....",
+    "................",
+    "................",
+)

@@ -47,7 +47,8 @@ fun PixelTheme(content: @Composable () -> Unit) {
             surfaceVariant = PixelColors.panel,
             onSurfaceVariant = PixelColors.gray,
             outline = PixelColors.gray,
-            scrim = Color.Black.copy(alpha = 0.6f),
+            // spec 3.11 遮罩：rgba(5,5,10,.86)（PixelDialog 等全屏遮罩）
+            scrim = Color(0xDB05050A),
         ),
         typography = Typography(
             // 超大标题：中文像素

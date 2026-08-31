@@ -38,8 +38,8 @@ fun PixelButton(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
 ) {
     val pressed by interactionSource.collectIsPressedAsState()
-    // 按下下沉 1px（阶跃位移，无动画 → 天然离散跳变）
-    val yOffset = if (pressed) 1.dp else 0.dp
+    // 按下下沉 2px（spec 3.2 `.pbtn:active` translateY(2px)，阶跃无动画）
+    val yOffset = if (pressed) 2.dp else 0.dp
 
     val bg = when {
         !enabled -> PixelColors.panel.copy(alpha = 0.5f)

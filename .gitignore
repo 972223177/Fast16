@@ -1,0 +1,24 @@
+# --- IDE / 编辑器 ---
+*.iml
+.idea/
+.vscode/
+.DS_Store
+
+# --- Gradle / 构建产物 ---
+.gradle/
+.kotlin/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# --- 本地环境配置 ---
+local.properties
+
+# --- 本地工具数据 ---
+.codegraph/
+
+# --- 构建产物文件 ---
+*.apk
+*.aab
+*.hprof

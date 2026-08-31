@@ -1,0 +1,105 @@
+# AGENTS.md
+
+本文件供 AI 编码代理在 Fast16 工作区中快速建立上下文。  
+遵循**渐进式披露**：先读「速览」和「文档地图」；只有进入对应任务时，才深入阅读仓库内 `docs/` 文档的指定章节。
+
+---
+
+## 1. 项目速览
+
+- **Fast16**：一款 Android 本地 App「816 轻断食」，用于 8:16 间歇性断食的用餐排程与提醒。
+- **核心玩法**：记录早餐时间 → 自动生成午/晚候选方案 → 用户选取/微调 → 生成当日计划 → 到点提醒「备餐 / 开吃」→ 打卡记录与统计。
+- **技术基线**：Kotlin 2.2 + Jetpack Compose + Material3；`minSdk 24`、`targetSdk 37`、`applicationId com.ly.fast16`；当前为单 Gradle 模块 `:app`。构建链：Gradle 9.7.1 + AGP 9.3.0（内置 Kotlin）+ JDK 21。
+- **产品基调**：深色像素风、纯本地离线、无账号/无后端、仅中文。
+- **当前状态**：M0 刚起步，现有代码仍是 Android 模板（`MainActivity` + 默认主题），尚未按规格落地像素设计系统、Room、DataStore、Koin、Navigation 等。
+
+---
+
+## 2. 文档地图（先看这里）
+
+规格文档已复制到仓库内 `docs/` 目录，Agent 可直接读取：
+
+| 文档 | 内容 | 什么时候读 |
+|------|------|-----------|
+| [`docs/8-16饮食法App-设计方案.md`](docs/8-16饮食法App-设计方案.md) | 产品定位、需求、架构、数据模型、UI/像素规范、里程碑、决策 | 任何设计/架构决策前必读 |
+| [`docs/8-16饮食法App-基建与UI骨架.md`](docs/8-16饮食法App-基建与UI骨架.md) | M0 定稿：Gradle 参数、依赖版本、路由、MVI 页面壳、Pixel 组件清单 | 搭工程、改 Gradle、搭 UI 骨架时 |
+| [`docs/8-16饮食法App-完整定义.md`](docs/8-16饮食法App-完整定义.md) | DDL、DAO、DataStore Schema、算法伪码、页面组件与动效分镜 | 实现数据层、领域算法、像素组件时 |
+| [`docs/8-16饮食法App-流程图.md`](docs/8-16饮食法App-流程图.md) | Mermaid 流程：主流程、候选生成、状态机、提醒、统计 | 梳理业务流或写用例时 |
+
+> UI 原型（`UI原型/index.html`）原稿仍在 Obsidian Vault；如需仓库内可直接打开的原型，可再复制到 `docs/UI原型/`。
+
+---
+
+## 3. 按任务渐进式深入
+
+| 任务 | 必读章节 |
+|------|----------|
+| 修改 Gradle / 依赖版本 / 工程参数 | 基建与 UI 骨架 §1 |
+| 实现 Room 实体 / DAO / DataStore | 完整定义 第一部分；设计方案 §6 |
+| 实现候选生成、约束校验、状态机、统计 | 完整定义 第二部分；设计方案 §7 |
+| 实现 Compose 页面 / 导航 / MVI 壳 | 基建与 UI 骨架 §2；设计方案 §5 |
+| 实现像素组件 / 主题 / 动效 | 基建与 UI 骨架 §2.1–2.4；设计方案 §8 |
+| 实现提醒 / 闹钟 / 重启自愈 | 设计方案 §5.3；流程图 §6–7 |
+| 实现记录页 / 日历 / 统计 | 设计方案 §2.1 FR-13/14、§6.4–6.5、§8.7 |
+| 实现 Widget | 设计方案 §8.7；基建与 UI 骨架 §1.4 |
+| 实现首次引导弹窗 | 设计方案 §8.8；流程图 §2 |
+
+---
+
+## 4. 当前代码状态与差距
+
+```text
+app/src/main/java/com/ly/fast16/
+├── MainActivity.kt          # 模板 Hello Android，未接业务
+└── ui/theme/                # 默认 Compose 主题，未落地 PixelTokens
+```
+
+已知差距（不要在未读文档时擅自“补全”）：
+
+- `gradle/libs.versions.toml` 已按基建文档与最新可用稳定版对齐（AGP `9.3.0`、Kotlin `2.2.20`、Compose BOM `2026.08.00`、Room `3.0.1` 即 `androidx.room3:room3-*`、Koin `4.2.2` 等），依赖已通过 `sync` 验证可解析；maven 仓库走阿里云镜像。
+- 尚未引入 Room、DataStore、Koin、Navigation、Glance、AlarmManager 相关代码。
+- 尚未建立 `core/`、`domain/`、`data/`、`feature/` 目录结构。
+
+---
+
+## 5. 构建与验证
+
+在仓库根目录执行：
+
+```bash
+./gradlew :app:assembleDebug        # 构建 debug APK
+./gradlew :app:testDebugUnitTest    # 单元测试
+./gradlew :app:lintDebug            # lint
+```
+
+新增纯业务逻辑时，默认应同时补 JUnit 单元测试（`app/src/test/java/`）。
+
+---
+
+## 6. 硬性工程规则（Review 红线）
+
+- **MVI**：每个 Screen 用 `Intent → Reducer → StateFlow`；Reducer 必须是纯函数（无 Android 依赖、无 IO、无时间源），副作用放 ViewModel/UseCase。
+- **Feature-first 单模块**：`feature → domain ← data`；feature 之间禁止横向依赖；跨功能共享才进 `core/`。
+- **SSOT**：UI 只订阅 DAO 的 `Flow`；一切写入走 `upsert`；禁止内存副本手动同步。
+- **派生字段不落库**：`prepTime` 由 `mealTime - prepMinutes` 派生；角色状态由“当前时间 × 今日计划”派生；连续打卡由 `check_ins` 聚合派生。
+- **Room 纪律**：枚举存 `Int` + TypeConverter；字符串列加长度约束；改表必须升 `schemaVersion` 并写迁移。
+- **像素风规范**：业务组件只引用 `PixelTokens`，不直接引用 M3 默认值；整数像素网格；动画走步进/阶跃；渲染用 `FilterQuality.none` + 整数倍缩放。
+- **原生 API 兼容性（采纳前必查 min–target）**：调用任何 Android 原生 API（SDK 方法、系统服务、Manifest 特性/权限）前，必须先核对 `minSdk 24 ~ targetSdk 37` 全区间兼容性（如 `@RequiresApi` / `Build.VERSION` 门控、行为变更影响）。**只有全区间兼容，方案才可采纳**；若不兼容，必须补充兼容方案（版本分支、替代实现、降级路径、`core/` 内封装兜底），禁止在 feature 层散落裸版本判断。
+- **兼容方案下沉 `core/`**：原生 API 的版本差异处理一律封装进 `core/`（如 `core/device`、`core/system`），对外暴露统一抽象入口；feature 层只依赖该入口，不得直接写 `Build.VERSION` 分支或 `@SuppressLint("NewApi")`。
+- **本地优先/隐私**：V1 不联网、不上传、无账号；数据只存 Room + DataStore。
+
+---
+
+## 7. 已确认的关键决策
+
+| 决策 | 结论 |
+|------|------|
+| 窗口语义 | 早餐时间严格等于进食窗口起点 |
+| 提醒 | V1 = 通知 + 固定轻短震动（~80ms） |
+| DI | Koin（纯 Kotlin DSL） |
+| 打卡存储 | Room 3.0；DataStore 只存偏好/Widget 配置 |
+| 记录页 | 统计概览 + 日历合并为一个「记录」页 |
+| Widget | Glance 实现，接受无动画/分钟级刷新限制 |
+| 引导 | 首次启动弹像素风 8:16 说明，可跳过可重看 |
+
+完整决策清单见 `docs/8-16饮食法App-设计方案.md` §11；若实现与本文冲突，以 `docs/` 内规格文档为源（除非用户另行确认变更）。

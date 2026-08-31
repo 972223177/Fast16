@@ -27,6 +27,7 @@
 | [`docs/8-16饮食法App-流程图.md`](docs/8-16饮食法App-流程图.md) | Mermaid 流程：主流程、候选生成、状态机、提醒、统计 | 梳理业务流或写用例时 |
 | [`docs/compose-performance.md`](docs/compose-performance.md) | Compose 性能避坑：稳定性/不可变类、状态提升、延迟读取、derivedStateOf、LazyColumn key、strong skipping | 写/Review 任何 Compose UI 代码时必读 |
 | [`docs/testing-best-practices.md`](docs/testing-best-practices.md) | 测试最佳实践：测试金字塔、fake 优先、MVI 分层测试、Compose UI 测试、Room 迁移测试 | 写/Review 测试代码时必读 |
+| [`docs/pixel-motion-guidelines.md`](docs/pixel-motion-guidelines.md) | 像素风交互动效规范：阶跃帧、时长/节奏、整数像素、反馈手法、Compose 实现约束 | 实现/Review 交互与动效时必读 |
 
 > UI 原型（`UI原型/index.html`）原稿仍在 Obsidian Vault；如需仓库内可直接打开的原型，可再复制到 `docs/UI原型/`。
 
@@ -40,7 +41,7 @@
 | 实现 Room 实体 / DAO / DataStore | 完整定义 第一部分；设计方案 §6 |
 | 实现候选生成、约束校验、状态机、统计 | 完整定义 第二部分；设计方案 §7；testing-best-practices §3（算法单测） |
 | 实现 Compose 页面 / 导航 / MVI 壳 | 基建与 UI 骨架 §2；设计方案 §5；compose-performance §2–§7 |
-| 实现像素组件 / 主题 / 动效 | 基建与 UI 骨架 §2.1–2.4；设计方案 §8；compose-performance §1–§4 |
+| 实现像素组件 / 主题 / 动效 | 基建与 UI 骨架 §2.1–2.4；设计方案 §8；compose-performance §1–§4；pixel-motion 全文 |
 | 实现提醒 / 闹钟 / 重启自愈 | 设计方案 §5.3；流程图 §6–7 |
 | 实现记录页 / 日历 / 统计 | 设计方案 §2.1 FR-13/14、§6.4–6.5、§8.7 |
 | 实现 Widget | 设计方案 §8.7；基建与 UI 骨架 §1.4 |
@@ -88,6 +89,7 @@ app/src/main/java/com/ly/fast16/
 - **Compose Preview 必写**：每个自定义 Compose 组件、每个 Screen（页面级）都必须编写 `@Preview`，并在 Preview 中注入主题（如 `Fast16Theme`）与必要的假数据，保证可在 Android Studio / Compose Preview 中独立渲染。纯业务容器（无视觉输出）除外。
 - **Compose 性能规范**：UI 代码遵循 [`docs/compose-performance.md`](docs/compose-performance.md)——UI State 用不可变 data class（集合用 `ImmutableList` 或 Wrapper）；LazyColumn 必写稳定 `key`；组合期间禁止写状态（向后写入）；频繁变化的状态用 lambda 版修饰符读取；Review 按该文档逐条核对。
 - **像素风规范**：业务组件只引用 `PixelTokens`，不直接引用 M3 默认值；整数像素网格；动画走步进/阶跃；渲染用 `FilterQuality.none` + 整数倍缩放。
+- **交互动效必配（像素化）**：交互类业务动效（点击反馈、打卡/勾选成功、状态切换、计数变化、页面/弹窗过渡、空态）默认必须配上，不是可选装饰；实现遵循 [`docs/pixel-motion-guidelines.md`](docs/pixel-motion-guidelines.md)——阶跃帧而非平滑插值、反馈 60–200ms 短促、整数像素位移、帧时序进 `PixelTokens`；UI 禁 squash/stretch 与模糊/渐隐过渡；不照搬 M3 motion 模式（像素风格），M3 时长仅作上限参考。
 - **原生 API 兼容性（采纳前必查 min–target）**：调用任何 Android 原生 API（SDK 方法、系统服务、Manifest 特性/权限）前，必须先核对 `minSdk 24 ~ targetSdk 37` 全区间兼容性（如 `@RequiresApi` / `Build.VERSION` 门控、行为变更影响）。**只有全区间兼容，方案才可采纳**；若不兼容，必须补充兼容方案（版本分支、替代实现、降级路径、`core/` 内封装兜底），禁止在 feature 层散落裸版本判断。
 - **兼容方案下沉 `core/`**：原生 API 的版本差异处理一律封装进 `core/`（如 `core/device`、`core/system`），对外暴露统一抽象入口；feature 层只依赖该入口，不得直接写 `Build.VERSION` 分支或 `@SuppressLint("NewApi")`。
 - **本地优先/隐私**：V1 不联网、不上传、无账号；数据只存 Room + DataStore。

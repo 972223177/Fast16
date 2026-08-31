@@ -96,6 +96,7 @@ app/src/main/java/com/ly/fast16/
 - **原生 API 兼容性（采纳前必查 min–target）**：调用任何 Android 原生 API（SDK 方法、系统服务、Manifest 特性/权限）前，必须先核对 `minSdk 24 ~ targetSdk 37` 全区间兼容性（如 `@RequiresApi` / `Build.VERSION` 门控、行为变更影响），各版本权限收紧与行为变更逐条见 [`docs/compat-api24-37.md`](docs/compat-api24-37.md)（含编码红线清单）。**只有全区间兼容，方案才可采纳**；若不兼容，必须补充兼容方案（版本分支、替代实现、降级路径、`core/` 内封装兜底），禁止在 feature 层散落裸版本判断。
 - **兼容方案下沉 `core/`**：原生 API 的版本差异处理一律封装进 `core/`（如 `core/device`、`core/system`），对外暴露统一抽象入口；feature 层只依赖该入口，不得直接写 `Build.VERSION` 分支或 `@SuppressLint("NewApi")`。
 - **本地优先/隐私**：V1 不联网、不上传、无账号；数据只存 Room + DataStore。
+- **代码规范（import 优先，禁 FQN）**：任何类/函数必须**先 `import` 再使用**，禁止在代码体中写类名全量引用（FQN）——如 `com.ly.fast16.feature.home.ui.HomeViewModel()`、`androidx.compose.ui.graphics.Color.Black`、`org.koin.androidx.compose.koinViewModel()` 一律改为 import 后短名；KDoc 链接（`[ClassName]`）同样用 import 后的短名。仅 `package`/`import` 语句本身，以及描述旧包名/第三方名的注释文字可保留全限定形式。
 
 ---
 

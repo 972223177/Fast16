@@ -14,5 +14,6 @@ Agent 工程规范补充（仓库内维护，非 Obsidian 副本）：
 - [`pixel-motion-guidelines.md`](./pixel-motion-guidelines.md) — 像素风交互动效规范（必配清单/帧时序）
 - [`compat-api24-37.md`](./compat-api24-37.md) — API 24–37 兼容性避坑（权限收紧/行为变更/红线清单）
 - [`coroutines-best-practices.md`](./coroutines-best-practices.md) — 协程避坑与最佳实践（结构化并发/取消/异常）
+- [`kotlin-code-style.md`](./kotlin-code-style.md) — Kotlin 代码规范与命名规范（官方基准：命名/源文件组织/格式化/KDoc/惯用法）
 
 > 源目录：`/Users/linyu/Documents/Obsidian Vault/Fast16/`

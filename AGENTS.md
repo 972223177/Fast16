@@ -30,6 +30,7 @@
 | [`docs/pixel-motion-guidelines.md`](docs/pixel-motion-guidelines.md) | 像素风交互动效规范：阶跃帧、时长/节奏、整数像素、反馈手法、Compose 实现约束 | 实现/Review 交互与动效时必读 |
 | [`docs/compat-api24-37.md`](docs/compat-api24-37.md) | API 24–37 兼容性避坑：各版本权限收紧、行为变更、本项目红线清单 | 写权限/通知/闹钟/系统交互代码前必读 |
 | [`docs/coroutines-best-practices.md`](docs/coroutines-best-practices.md) | 协程避坑与最佳实践：结构化并发、Dispatchers 注入、取消配合、CancellationException 重抛、测试 | 写/Review 任何并发与异步代码时必读 |
+| [`docs/kotlin-code-style.md`](docs/kotlin-code-style.md) | Kotlin 代码规范与命名规范（官方基准）：命名、源文件组织、格式化、KDoc、惯用法、项目红线 | 写/Review 任何 Kotlin 代码时必读 |
 
 > UI 原型（`UI原型/index.html`）原稿仍在 Obsidian Vault；如需仓库内可直接打开的原型，可再复制到 `docs/UI原型/`。
 
@@ -39,6 +40,7 @@
 
 | 任务 | 必读章节 |
 |------|----------|
+| 写/Review 任何 Kotlin 代码（命名/格式/KDoc/惯用法） | kotlin-code-style 全文 |
 | 修改 Gradle / 依赖版本 / 工程参数 | 基建与 UI 骨架 §1 |
 | 实现 Room 实体 / DAO / DataStore | 完整定义 第一部分；设计方案 §6 |
 | 实现候选生成、约束校验、状态机、统计 | 完整定义 第二部分；设计方案 §7；testing-best-practices §3（算法单测） |
@@ -94,9 +96,12 @@ app/src/main/java/com/ly/fast16/
 - **像素风规范**：业务组件只引用 `PixelTokens`，不直接引用 M3 默认值；整数像素网格；动画走步进/阶跃；渲染用 `FilterQuality.none` + 整数倍缩放。
 - **交互动效必配（像素化）**：交互类业务动效（点击反馈、打卡/勾选成功、状态切换、计数变化、页面/弹窗过渡、空态）默认必须配上，不是可选装饰；实现遵循 [`docs/pixel-motion-guidelines.md`](docs/pixel-motion-guidelines.md)——阶跃帧而非平滑插值、反馈 60–200ms 短促、整数像素位移、帧时序进 `PixelTokens`；UI 禁 squash/stretch 与模糊/渐隐过渡；不照搬 M3 motion 模式（像素风格），M3 时长仅作上限参考。
 - **原生 API 兼容性（采纳前必查 min–target）**：调用任何 Android 原生 API（SDK 方法、系统服务、Manifest 特性/权限）前，必须先核对 `minSdk 24 ~ targetSdk 37` 全区间兼容性（如 `@RequiresApi` / `Build.VERSION` 门控、行为变更影响），各版本权限收紧与行为变更逐条见 [`docs/compat-api24-37.md`](docs/compat-api24-37.md)（含编码红线清单）。**只有全区间兼容，方案才可采纳**；若不兼容，必须补充兼容方案（版本分支、替代实现、降级路径、`core/` 内封装兜底），禁止在 feature 层散落裸版本判断。
-- **兼容方案下沉 `core/`**：原生 API 的版本差异处理一律封装进 `core/`（如 `core/device`、`core/system`），对外暴露统一抽象入口；feature 层只依赖该入口，不得直接写 `Build.VERSION` 分支或 `@SuppressLint("NewApi")`。
+- **兼容方案下沉 `core/`**：原生 API 的版本差异处理一律封装进 `core/`（如 `core/device`、`core/system`），对外暴露统一抽象入口（对象/类，如 `core/device/SystemTimeProvider`）；feature/data 层只依赖该入口，不得直接写 `Build.VERSION` 分支或 `@SuppressLint("NewApi")`。要点：
+  - **判定原则**：任何 SDK 元数据要求 > `minSdk` 的 API 调用都视为「版本差异」，**即使运行时可用也必须下沉**——典型如 `java.time`（`Clock.systemDefaultZone()` / `ZoneId.systemDefault()` 元数据要求 API 26，本项目靠核心库脱糖在 API 24/25 可用，但 lint/IDE 仍报 NewApi，不能靠「实际能跑」豁免）。
+  - **豁免收口**：`@SuppressLint("NewApi")` 只允许出现在该 core 封装文件内部（唯一豁免点），并必须用注释说明兼容依据（如「已启用 `isCoreLibraryDesugaringEnabled`，desugar_jdk_libs 版本」）。
+  - **职责边界**：取「当前系统时间/时区」等系统能力走 `core/device/SystemTimeProvider`；纯日期换算（确定性计算，不依赖系统时间）保持纯 JVM 工具（如 `core/time/TimeUtils`，无 Android 依赖、domain 可安全引用），两者不重复造轮子。
 - **本地优先/隐私**：V1 不联网、不上传、无账号；数据只存 Room + DataStore。
-- **代码规范（import 优先，禁 FQN）**：任何类/函数必须**先 `import` 再使用**，禁止在代码体中写类名全量引用（FQN）——如 `com.ly.fast16.feature.home.ui.HomeViewModel()`、`androidx.compose.ui.graphics.Color.Black`、`org.koin.androidx.compose.koinViewModel()` 一律改为 import 后短名；KDoc 链接（`[ClassName]`）同样用 import 后的短名。仅 `package`/`import` 语句本身，以及描述旧包名/第三方名的注释文字可保留全限定形式。
+- **代码规范（import 优先，禁 FQN）**：任何类/函数必须**先 `import` 再使用**，禁止在代码体中写类名全量引用（FQN）——如 `com.ly.fast16.feature.home.ui.HomeViewModel()`、`androidx.compose.ui.graphics.Color.Black`、`org.koin.androidx.compose.koinViewModel()` 一律改为 import 后短名；KDoc 链接（`[ClassName]`）同样用 import 后的短名。仅 `package`/`import` 语句本身，以及描述旧包名/第三方名的注释文字可保留全限定形式。完整 Kotlin 代码规范与命名规范（命名、源文件组织、格式化、KDoc、惯用法）见 [`docs/kotlin-code-style.md`](docs/kotlin-code-style.md)。
 
 ---
 

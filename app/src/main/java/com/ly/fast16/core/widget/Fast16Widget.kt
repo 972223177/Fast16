@@ -4,10 +4,13 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionParametersOf
@@ -22,6 +25,7 @@ import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.updateAll
 import androidx.glance.background
+import androidx.glance.LocalSize
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -36,11 +40,14 @@ import androidx.glance.layout.width
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import com.ly.fast16.Fast16App
 import com.ly.fast16.MainActivity
+import com.ly.fast16.R
 import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.widget.WidgetDataProvider.WidgetData
 import com.ly.fast16.domain.model.MealType
+import com.ly.fast16.domain.usecase.CheckInUseCase
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
 /**
  * 桌面像素小组件（design-spec §1 .widget / §5.2）：
@@ -54,7 +61,14 @@ import com.ly.fast16.domain.model.MealType
  */
 class Fast16Widget : GlanceAppWidget() {
 
-    override val sizeMode: SizeMode = SizeMode.Single
+    // 响应式：支持桌面拉伸/缩放到多个尺寸（2×1 紧凑 / 3×1 宽 / 3×2 大）
+    override val sizeMode: SizeMode = SizeMode.Responsive(
+        setOf(
+            DpSize(110.dp, 110.dp),
+            DpSize(250.dp, 110.dp),
+            DpSize(250.dp, 250.dp),
+        ),
+    )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = WidgetDataProvider.load(context)
@@ -65,13 +79,14 @@ class Fast16Widget : GlanceAppWidget() {
 }
 
 /** Widget 打卡 ActionCallback：打卡今日指定餐 → 刷新 widget（不启动 Activity） */
-class WidgetCheckInCallback : ActionCallback {
+class WidgetCheckInCallback : ActionCallback, KoinComponent {
+    // 依赖经 KoinComponent 惰性注入（系统实例化类，与 Receiver 同模式）——避免强转 Application 穿透分层
+    private val checkInUseCase: CheckInUseCase by inject()
 
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val typeRaw = parameters[KEY_TYPE] ?: return
         val type = runCatching { MealType.valueOf(typeRaw) }.getOrNull() ?: return
-        val app = context.applicationContext as Fast16App
-        app.checkInUseCase.checkIn(SystemTimeProvider.today(), type, SystemTimeProvider.now())
+        checkInUseCase.checkIn(SystemTimeProvider.today(), type, SystemTimeProvider.now())
         Fast16Widget().updateAll(context)
     }
 
@@ -90,8 +105,8 @@ private val C_YELLOW = ColorProvider(Color(0xFFFFCD75))
 
 @Composable
 private fun Fast16WidgetContent(data: WidgetData) {
-    val context = LocalContext.current
-    // 外层 bg + 2px 黑描边（Glance 无 stroke，用黑底 + 内层面板模拟）
+    val size = LocalSize.current
+    // 外层 bg + 内层面板（Glance 无 stroke，用黑底 + 内层模拟描边）
     Column(modifier = GlanceModifier.fillMaxSize().background(C_BG).padding(4.dp)) {
         Column(
             modifier = GlanceModifier
@@ -100,7 +115,7 @@ private fun Fast16WidgetContent(data: WidgetData) {
                 .cornerRadius(4.dp)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
-            // 标题 + 断食状态（widgetShowFasting 控制显示）
+            // 头部：816 轻断食 + 断食倒计时（右侧；widgetShowFasting 控制）
             Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "816 轻断食",
@@ -109,16 +124,16 @@ private fun Fast16WidgetContent(data: WidgetData) {
                 )
                 if (data.showFasting) {
                     Text(
-                        text = data.fastingLabel ?: "休息中",
+                        text = data.fastingLabel ?: "断食 --:--",
                         style = TextStyle(color = C_YELLOW, fontSize = 9.sp),
                     )
                 }
             }
 
-            Spacer(modifier = GlanceModifier.height(10.dp))
+            Spacer(modifier = GlanceModifier.height(8.dp))
 
-            // 三餐状态点（已打卡绿 / 未打卡灰；P0：点击各自打卡对应餐）
             if (data.hasPlan) {
+                // 三餐打卡信息流（主体）：像素碗（绿=已打卡/灰=未打卡）+ 餐名+状态点
                 Row(modifier = GlanceModifier.fillMaxWidth()) {
                     MealType.entries.forEach { type ->
                         val checked = type in data.checked
@@ -126,45 +141,65 @@ private fun Fast16WidgetContent(data: WidgetData) {
                             modifier = GlanceModifier.defaultWeight(),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Box(
-                                modifier = GlanceModifier
-                                    .size(10.dp)
-                                    .background(if (checked) C_GREEN else C_GRAY)
-                                    .clickable(
-                                        onClick = actionRunCallback<WidgetCheckInCallback>(
-                                            actionParametersOf(WidgetCheckInCallback.KEY_TYPE to type.name),
-                                        ),
-                                    ),
-                            ) { }
-                            Spacer(modifier = GlanceModifier.height(2.dp))
-                            Text(
-                                text = mealLabel(type),
-                                style = TextStyle(color = C_WHITE, fontSize = 9.sp),
+                            Image(
+                                provider = ImageProvider(
+                                    if (checked) R.drawable.ic_widget_bowl_checked
+                                    else R.drawable.ic_widget_bowl_unchecked
+                                ),
+                                contentDescription = mealLabel(type),
+                                modifier = GlanceModifier.size(28.dp).padding(2.dp),
                             )
+                            Spacer(modifier = GlanceModifier.height(3.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = GlanceModifier
+                                        .size(4.dp)
+                                        .background(if (checked) C_GREEN else C_GRAY),
+                                ) { }
+                                Spacer(modifier = GlanceModifier.width(3.dp))
+                                Text(
+                                    text = mealLabel(type),
+                                    style = TextStyle(color = if (checked) C_GREEN else C_WHITE, fontSize = 9.sp),
+                                )
+                            }
                         }
+                    }
+                }
+
+                // 下一餐信息行（仅宽尺寸 ≥220dp 显示，紧凑尺寸省略避免挤压）
+                if (size.width >= 220.dp) {
+                    data.nextMealLabel?.let { label ->
+                        Spacer(modifier = GlanceModifier.height(8.dp))
+                        Text(
+                            text = label,
+                            style = TextStyle(color = C_GRAY, fontSize = 9.sp),
+                        )
                     }
                 }
             } else {
                 Text(
-                    text = "今日无计划",
-                    style = TextStyle(color = C_WHITE, fontSize = 9.sp),
+                    text = "今日无计划，快去记录早餐吧",
+                    style = TextStyle(color = C_WHITE, fontSize = 10.sp),
                 )
             }
 
-            Spacer(modifier = GlanceModifier.height(10.dp))
+            Spacer(modifier = GlanceModifier.height(8.dp))
 
-            // 操作：打开 App（三餐图标各自打卡）
-            Row(modifier = GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            // 低调入口：打开 App（panel 底小按钮，居右；不再用醒目绿底）
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.End,
+            ) {
                 Box(
                     modifier = GlanceModifier
                         .background(C_BG)
                         .cornerRadius(4.dp)
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
                         .clickable(onClick = actionStartActivity<MainActivity>()),
                 ) {
                     Text(
-                        text = "打开 App",
-                        style = TextStyle(color = C_WHITE, fontSize = 10.sp),
+                        text = "打开 App ↗",
+                        style = TextStyle(color = C_WHITE, fontSize = 9.sp),
                     )
                 }
             }

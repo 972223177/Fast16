@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小组件像素碗——未打卡（灰；pixel_gray #7B7B8C） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="16"
+    android:viewportHeight="16">
+    <path
+        android:fillColor="#7B7B8C"
+        android:pathData="M3,2 L13,2 L13,9 Q13,11 11,11 L5,11 Q3,11 3,9 Z" />
+    <path
+        android:fillColor="#7B7B8C"
+        android:pathData="M5,11 L7,11 L7,12 L5,12 Z" />
+    <path
+        android:fillColor="#7B7B8C"
+        android:pathData="M9,11 L11,11 L11,12 L9,12 Z" />
+</vector>

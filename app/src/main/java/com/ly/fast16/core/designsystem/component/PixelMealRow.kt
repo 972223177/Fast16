@@ -47,7 +47,8 @@ fun PixelMealRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(PixelColors.panel)
+            // 半透明面板底：Home 氛围背景（云/星光）透出；内容对比仍足够
+            .background(PixelColors.panel.copy(alpha = 0.9f))
             .border(BorderStroke(PixelShape.borderWidth, Color.Black))
             .padding(PixelShape.Spacing.md),
         verticalAlignment = Alignment.CenterVertically,

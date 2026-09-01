@@ -44,7 +44,13 @@ fun PixelCharacter(
 
     val rows = when (state) {
         CharacterState.IDLE, CharacterState.FASTING ->
-            if (frame % 12 == 10) CH_IDLE2 else CH_IDLE1 // 每 ~3.1s 眨眼 1 帧
+            when {
+                // 偶发打哈欠（每 ~15.6s 5 帧）：空态/断食等待时角色小动作，防素
+                frame % 60 in 50..54 -> CH_IDLE_YAWN
+                // 每 ~3.1s 眨眼 1 帧
+                frame % 12 == 10 -> CH_IDLE2
+                else -> CH_IDLE1
+            }
         CharacterState.PREP -> CH_PREP
         CharacterState.EATING -> if (frame % 2 == 0) CH_EAT1 else CH_EAT2
         CharacterState.REST -> if (frame % 2 == 0) CH_REST1 else CH_REST2
@@ -153,6 +159,12 @@ private val CH_IDLE1 = listOf(
 /** 待机帧 2（眨眼） */
 private val CH_IDLE2 = CH_IDLE1.toMutableList().apply {
     this[5] = "..HSSSSSSSSSSH.."
+}
+
+/** 哈欠帧：闭眼 + 张嘴（IDLE 偶发小动作，空态/断食等待时防素） */
+private val CH_IDLE_YAWN = CH_IDLE1.toMutableList().apply {
+    this[7] = "..HSSSSSSSSSSH.." // 闭眼
+    this[8] = "..HSSSSKKKSSSH.." // 张嘴（哈欠）
 }
 
 /** 备餐：双手前伸（K=手） */

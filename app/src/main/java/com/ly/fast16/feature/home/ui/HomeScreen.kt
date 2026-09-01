@@ -37,6 +37,7 @@ import com.ly.fast16.core.plan.AutoPlanResult
 import com.ly.fast16.core.scheduling.PlanScheduler
 import com.ly.fast16.data.local.SettingsStore
 import com.ly.fast16.core.designsystem.component.PixelBubble
+import com.ly.fast16.core.designsystem.component.PixelAmbientBackdrop
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCard
 import com.ly.fast16.core.designsystem.component.PixelDivider
@@ -501,8 +502,14 @@ private fun HomeContent(
 ) {
     // 备餐编辑弹窗当前目标餐次（null = 未打开）
     var editingPrep by remember { mutableStateOf<MealType?>(null) }
-    PixelPageScaffold(
-        modifier = modifier,
+    Box(modifier = modifier.fillMaxSize()) {
+        // 氛围背景（云 + 星光，垂直漂浮）：常驻淡背景，有内容时降透明度
+        PixelAmbientBackdrop(
+            dimmed = state.hasPlanToday,
+            modifier = Modifier.fillMaxSize(),
+        )
+        PixelPageScaffold(
+            modifier = Modifier.fillMaxSize(),
         headerAlignment = Alignment.CenterHorizontally,
         contentAlignment = Alignment.CenterHorizontally,
         header = {
@@ -655,6 +662,7 @@ private fun HomeContent(
                 }
             }
         }
+    }
     }
 
     // 备餐编辑弹窗：tile 上备餐文字可点 → 打开；±5 分钟（0–180），保存后重排闹钟

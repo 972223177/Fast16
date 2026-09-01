@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ 系统 SplashScreen 图标：透明背景 + 中心安全区内的「像素方框 + 小健举牌 8:16」。
+     Android 13+ 系统强制把 splash 图标放进圆形 mask（app 无法关闭）；此设计把内容全部收进
+     中心安全区（inset 18dp → 方框约 72dp/108dp，圆形 mask 半径之外全是透明），
+     圆形裁切只落在透明区、视觉不可见；方框（pixel_panel 底 + 3dp 黑描边，呼应全 App 像素描边）
+     在安全区内完整显示 → 保持方框效果。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <inset
+            android:inset="18dp">
+            <shape android:shape="rectangle">
+                <solid android:color="@color/pixel_panel" />
+                <stroke
+                    android:width="3dp"
+                    android:color="#000000" />
+            </shape>
+        </inset>
+    </item>
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+</layer-list>

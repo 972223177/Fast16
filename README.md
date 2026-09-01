@@ -65,6 +65,19 @@
 
 修改文案只需改 txt，然后运行脚本重新生成 HTML 即可。
 
+### 合规文档公开地址（CloudBase 静态托管）
+
+商店后台「隐私政策 / 用户协议链接」可填以下公开地址（腾讯云 CloudBase 静态托管，国内可达）：
+
+- 隐私政策：https://ai-native-d1gnbr4yw9aa48d5e-1314038271.tcloudbaseapp.com/privacy-policy.html
+- 用户协议：https://ai-native-d1gnbr4yw9aa48d5e-1314038271.tcloudbaseapp.com/user-agreement.html
+
+- 环境：`ai-native-d1gnbr4yw9aa48d5e`（ap-shanghai）
+- 重新部署：改文案 → `./scripts/sync-legal.sh` 重新生成 HTML → 上传 `docs/*.html` 到静态托管即可
+
+> 注意：`*.tcloudbaseapp.com` 为测试域名，首次访问有安全提示页（点击「确定访问」进入正文）。
+> 商店审核建议后续绑定已备案自定义域名，以去除提示页、更稳妥。
+
 ## 致谢
 
 - [Press Start 2P](https://github.com/google/fonts) — SIL OFL 1.1

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -36,6 +37,7 @@ import com.ly.fast16.core.designsystem.component.PixelCard
 import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
+import com.ly.fast16.core.designsystem.component.PixelSectionTitle
 import com.ly.fast16.core.designsystem.component.PixelStatBars
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.component.PixelToast
@@ -255,9 +257,14 @@ private fun RecordContent(
     modifier: Modifier = Modifier,
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
+            .widthIn(max = PixelShape.contentMaxWidth)
             .verticalScroll(rememberScrollState())
             .padding(PixelShape.Spacing.lg),
         horizontalAlignment = Alignment.Start,
@@ -273,6 +280,10 @@ private fun RecordContent(
                 .background(PixelColors.panel.copy(alpha = 0.6f)),
         )
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
+
+        // 分区标题：统计概览
+        PixelSectionTitle(text = "统计概览")
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
 
         // 统计概览（原型 stats-panel：连续打卡大数字 + 完成率 seg + 近 7 天柱状图）
         PixelCard(modifier = Modifier.fillMaxWidth()) {
@@ -305,6 +316,10 @@ private fun RecordContent(
         }
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
+
+        // 分区标题：打卡日历
+        PixelSectionTitle(text = "打卡日历")
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
 
         // 月历（原型 cal-grid）
         PixelCalendar(
@@ -390,6 +405,7 @@ private fun RecordContent(
                 }
             }
         }
+    }
     }
 
     // 删除计划确认（PixelDialog）

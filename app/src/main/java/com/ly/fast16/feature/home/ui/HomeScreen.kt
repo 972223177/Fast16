@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ import com.ly.fast16.core.designsystem.component.PixelCharacter
 import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelMealRow
 import com.ly.fast16.core.designsystem.component.PixelNumber
+import com.ly.fast16.core.designsystem.component.PixelSectionTitle
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.component.PixelToast
@@ -315,9 +317,14 @@ private fun HomeContent(
     onEditPlan: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
+            .widthIn(max = PixelShape.contentMaxWidth)
             .verticalScroll(rememberScrollState())
             .padding(PixelShape.Spacing.lg),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -371,6 +378,10 @@ private fun HomeContent(
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
+        // 分区标题（UI 拥挤优化：信息层级 + 留白）
+        PixelSectionTitle(text = "今日三餐")
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+
         // 三餐时间轴（原型 meal-row ×3）或空态
         if (state.hasPlanToday) {
             // P2：今日打卡进度小字
@@ -391,7 +402,7 @@ private fun HomeContent(
                     onCheckIn = {
                         if (meal.checkedIn) onUncheckIn(meal.type) else onCheckIn(meal.type)
                     },
-                    modifier = Modifier.padding(vertical = PixelShape.Spacing.xs),
+                    modifier = Modifier.padding(vertical = PixelShape.Spacing.sm),
                 )
             }
 
@@ -414,6 +425,7 @@ private fun HomeContent(
                 }
             }
         }
+    }
     }
 }
 

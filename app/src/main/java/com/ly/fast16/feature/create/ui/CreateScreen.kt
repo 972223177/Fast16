@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -424,9 +425,14 @@ private fun CreateContent(
     onIntent: (CreateIntent) -> Unit,
     onBack: () -> Unit,
 ) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
+            .widthIn(max = PixelShape.contentMaxWidth)
             .verticalScroll(rememberScrollState())
             .padding(PixelShape.Spacing.lg),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -514,6 +520,7 @@ private fun CreateContent(
                 primary = false,
             )
         }
+    }
     }
 }
 

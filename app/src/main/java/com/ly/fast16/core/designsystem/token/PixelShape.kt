@@ -30,15 +30,18 @@ object PixelShape {
     /** 像素阶梯圆角 Shape（可复用给 Card / Dialog / Button 背景） */
     val stair: Shape = PixelStairShape()
 
-    /** 8px 网格间距体系（基建文档 §2.1） */
+    /** 呼吸感间距体系（UI 拥挤优化）：8px 网格放大 ~1.3x，全 App 统一留白 */
     object Spacing {
-        val xs: Dp = 4.dp
-        val sm: Dp = 8.dp
-        val md: Dp = 12.dp
-        val lg: Dp = 16.dp
-        val xl: Dp = 24.dp
-        val xxl: Dp = 32.dp
+        val xs: Dp = 6.dp
+        val sm: Dp = 10.dp
+        val md: Dp = 16.dp
+        val lg: Dp = 20.dp
+        val xl: Dp = 28.dp
+        val xxl: Dp = 40.dp
     }
+
+    /** 大屏内容最大宽度（平板/横屏不拉伸，保持阅读线宽；底栏仍全宽） */
+    val contentMaxWidth: Dp = 560.dp
 }
 
 /** 像素阶梯圆角实现（四角对称，台阶按整数 px 交替水平/垂直内切） */

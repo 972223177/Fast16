@@ -30,6 +30,12 @@
 # 允许 R8 确认完全无用后移除（当前 5 个枚举成本约等于 0）
 -keep,allowshrinking enum com.ly.fast16.domain.model.** { *; }
 
+# ---- Glance widget 组件 ----
+# Glance 经类名反射实例化 ActionCallback（actionRunCallback 存类名字符串到 RemoteViews）、
+# 并序列化 GlanceAppWidget 状态；R8 重命名会破坏 widget 打卡与刷新。
+# Manifest 引用的 Fast16WidgetReceiver 由 AGP 自动 keep，此处补内部组件（IN-04）。
+-keep class com.ly.fast16.core.widget.** { *; }
+
 # ---- WorkManager（Glance 传递依赖，androidx.startup 自动初始化）----
 # 项目未直接使用 WorkManager，但 glance-appwidget:1.1.1 传递引入 work-runtime:2.7.1，
 # 且 androidx.startup 的 InitializationProvider 会在启动时自动初始化

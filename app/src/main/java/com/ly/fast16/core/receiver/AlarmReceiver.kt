@@ -32,6 +32,9 @@ class AlarmReceiver : BroadcastReceiver(), KoinComponent {
 
         /** 迟到容差：闹钟晚触发超过 10 分钟则忽略（防重启后补发过期提醒） */
         const val LATE_GRACE_MS = 10 * 60 * 1000L
+
+        /** 早触发容忍：非精确闹钟（降级路径）允许提前 ≤1 分钟仍触发，防静默丢提醒 */
+        const val EARLY_GRACE_MS = 60 * 1000L
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -55,7 +58,10 @@ class AlarmReceiver : BroadcastReceiver(), KoinComponent {
         val meal = planRepository.getMealById(mealId) ?: return // 计划已删除/不存在
         val triggerAt = if (phase == MealPhase.PREP) meal.prepTime else meal.mealTime
         val now = SystemTimeProvider.now()
-        if (now.toEpochMilli() - triggerAt.toEpochMilli() > LATE_GRACE_MS) return // 迟到忽略
+        // WR-07：迟到 > LATE_GRACE_MS 忽略（防补发过期）；早触发容忍 ≤ EARLY_GRACE_MS
+        // （降级非精确闹钟可提前唤醒，直接忽略会静默丢提醒——WR-02 复审修正）
+        val delta = now.toEpochMilli() - triggerAt.toEpochMilli()
+        if (delta < -EARLY_GRACE_MS || delta > LATE_GRACE_MS) return
         reminder.trigger(meal, phase)
     }
 }

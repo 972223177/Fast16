@@ -39,6 +39,8 @@ private const val REQ_NOTIFICATION_PERMISSION = 1001
 @Composable
 fun OnboardingRoot(content: @Composable () -> Unit) {
     val settingsStore = koinInject<SettingsStore>()
+    // IN-02：复用 Koin 单例（避免每次 new），申请前判 isGranted（已授权不再弹系统框）
+    val notificationPermission = koinInject<NotificationPermission>()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settings by settingsStore.settings.collectAsState(initial = null)
@@ -48,9 +50,11 @@ fun OnboardingRoot(content: @Composable () -> Unit) {
         OnboardingDialog(
             onDismiss = {
                 scope.launch { settingsStore.setOnboardingSeen(true) }
-                // 通知权限申请时机：首启引导关闭后（33+）
+                // 通知权限申请时机：首启引导关闭后（33+，仅未授权时申请）
                 (context as? ComponentActivity)?.let { activity ->
-                    NotificationPermission(activity).launchRequest(activity, REQ_NOTIFICATION_PERMISSION)
+                    if (!notificationPermission.isGranted) {
+                        notificationPermission.launchRequest(activity, REQ_NOTIFICATION_PERMISSION)
+                    }
                 }
             },
         )

@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -36,6 +37,8 @@ import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
 import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.scheduling.PlanScheduler
+import com.ly.fast16.core.widget.Fast16Widget
+import androidx.glance.appwidget.updateAll
 import com.ly.fast16.core.time.Time
 import com.ly.fast16.data.local.AppSettings
 import com.ly.fast16.data.local.SettingsStore
@@ -61,6 +64,7 @@ import org.koin.androidx.compose.koinViewModel
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import kotlin.math.abs
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -89,6 +93,8 @@ sealed interface CreateUiState {
 
     data class Content(
         val step: Int = 1,
+        /** 编辑模式（CreateRoute.planId ≥ 0）：标题切 EDIT PLAN，生成走更新+重排 */
+        val isEdit: Boolean = false,
         val today: LocalDate,
         val zone: ZoneId,
         val breakfastTime: LocalTime,
@@ -107,6 +113,9 @@ sealed interface CreateUiState {
         val dinnerTime: LocalTime,
         val prepLunch: Int,
         val prepDinner: Int,
+        /** 午/晚餐提醒模式（编辑模式继承原值；新建=全局默认） */
+        val lunchReminderMode: ReminderMode = ReminderMode.NOTIFY,
+        val dinnerReminderMode: ReminderMode = ReminderMode.NOTIFY,
         val errors: List<String> = emptyList(),
     ) : CreateUiState
 }
@@ -125,7 +134,9 @@ object CreateReducer {
         today: LocalDate,
         zone: ZoneId,
         defaultBreakfast: LocalTime,
+        isEdit: Boolean = false,
     ): CreateUiState.Content = CreateUiState.Content(
+        isEdit = isEdit,
         today = today,
         zone = zone,
         breakfastTime = defaultBreakfast,
@@ -139,7 +150,45 @@ object CreateReducer {
         dinnerTime = defaultBreakfast,
         prepLunch = settings.defaultPrepLunchMinutes,
         prepDinner = settings.defaultPrepDinnerMinutes,
+        lunchReminderMode = settings.defaultReminderMode,
+        dinnerReminderMode = settings.defaultReminderMode,
     ).regen()
+
+    /** 编辑预填：从现有计划构造编辑初始状态（Record 详情「编辑计划」入口） */
+    fun editInitial(
+        settings: AppSettings,
+        plan: MealPlan,
+        meals: List<Meal>,
+        zone: ZoneId,
+    ): CreateUiState.Content {
+        val base = initial(
+            settings = settings,
+            today = plan.date,
+            zone = zone,
+            defaultBreakfast = Time.timeOf(plan.windowStart, zone),
+            isEdit = true,
+        )
+        val lunch = meals.firstOrNull { it.type == MealType.LUNCH }
+        val dinner = meals.firstOrNull { it.type == MealType.DINNER }
+        val lunchTime = lunch?.let { Time.timeOf(it.mealTime, zone) } ?: base.lunchTime
+        // WR-03(复审)：候选高亮与实际预填值对齐——选中与预填午餐最接近的候选
+        val lunchInstant = Time.at(plan.date, lunchTime, zone)
+        val selectedIndex = base.candidates.indices.minByOrNull { idx ->
+            abs(Duration.between(base.candidates[idx].lunch, lunchInstant).toMillis())
+        } ?: 0
+        return base.copy(
+            selectedIndex = selectedIndex,
+            lunchTime = lunchTime,
+            dinnerTime = dinner?.let { Time.timeOf(it.mealTime, zone) } ?: base.dinnerTime,
+            prepLunch = lunch?.prepMinutes ?: base.prepLunch,
+            prepDinner = dinner?.prepMinutes ?: base.prepDinner,
+            // WR-05：编辑继承原餐次提醒模式（不被全局默认覆盖）
+            lunchReminderMode = lunch?.reminderMode ?: base.lunchReminderMode,
+            dinnerReminderMode = dinner?.reminderMode ?: base.dinnerReminderMode,
+            // 编辑不自动打卡（已有计划的打卡状态独立保留）
+            autoCheckIn = false,
+        ).revalidate()
+    }
 
     fun reduce(state: CreateUiState, intent: CreateIntent): CreateUiState {
         val s = state as? CreateUiState.Content ?: return state
@@ -218,6 +267,24 @@ class CreateViewModel(
     private val _events = Channel<CreateEvent>(Channel.BUFFERED)
     val events: Flow<CreateEvent> = _events.receiveAsFlow()
 
+    /** 编辑模式：当前编辑的计划 id（-1 = 新建） */
+    private var editingPlanId: Long = -1L
+
+    /** 编辑模式：按 planId 加载现有计划预填（Record 详情「编辑计划」入口） */
+    fun loadForEdit(planId: Long) {
+        viewModelScope.launch {
+            val pair = planRepository.getPlanById(planId) ?: return@launch
+            val settings = settingsStore.settings.first()
+            editingPlanId = planId
+            _uiState.value = CreateReducer.editInitial(
+                settings = settings,
+                plan = pair.first,
+                meals = pair.second,
+                zone = SystemTimeProvider.zone,
+            )
+        }
+    }
+
     init {
         viewModelScope.launch {
             val settings = settingsStore.settings.first()
@@ -247,6 +314,8 @@ class CreateViewModel(
             val breakfast = Time.at(s.today, s.breakfastTime, zone)
             val window = Duration.ofHours(s.windowHours.toLong())
             val plan = MealPlan(
+                // 编辑模式带原 id → savePlan upsert 更新原计划（date 不变，重新生成三餐）
+                id = editingPlanId,
                 date = s.today,
                 windowStart = breakfast,
                 windowEnd = breakfast.plus(window),
@@ -254,18 +323,24 @@ class CreateViewModel(
             )
             val meals = listOf(
                 Meal(type = MealType.BREAKFAST, mealTime = breakfast, prepMinutes = 0, reminderMode = s.defaultReminderMode),
-                Meal(type = MealType.LUNCH, mealTime = Time.at(s.today, s.lunchTime, zone), prepMinutes = s.prepLunch, reminderMode = s.defaultReminderMode),
-                Meal(type = MealType.DINNER, mealTime = Time.at(s.today, s.dinnerTime, zone), prepMinutes = s.prepDinner, reminderMode = s.defaultReminderMode),
+                Meal(type = MealType.LUNCH, mealTime = Time.at(s.today, s.lunchTime, zone), prepMinutes = s.prepLunch, reminderMode = s.lunchReminderMode),
+                Meal(type = MealType.DINNER, mealTime = Time.at(s.today, s.dinnerTime, zone), prepMinutes = s.prepDinner, reminderMode = s.dinnerReminderMode),
             )
             val planId = planRepository.savePlan(plan, meals)
+            // WR-01：编辑/覆盖前先撤销旧闹钟，杜绝孤儿/幽灵提醒
+            if (editingPlanId >= 0) scheduler.cancel(editingPlanId)
             // 排程必须用落库后的真实 Meal（含 id）——AlarmReceiver 依 EXTRA_MEAL_ID 查库，
             // 用内存 id=0 的 Meal 会导致到点提醒查不到餐次而被静默丢弃
             val savedMeals = planRepository.watchMealsByDate(s.today).first()
-            scheduler.schedule(plan.copy(id = planId), savedMeals)
-            // FR-1 自动打卡早餐（记录即已吃，默认开，可关）
-            if (s.autoCheckIn) {
+            // IN-03：仅今天及未来排程（编辑历史日期只落库，过期闹钟无意义且会被迟到忽略）
+            if (!s.today.isBefore(SystemTimeProvider.today())) {
+                scheduler.schedule(plan.copy(id = planId), savedMeals)
+            }
+            // FR-1 自动打卡早餐（记录即已吃，默认开，可关）；仅新建生效，编辑不重复打卡
+            if (editingPlanId < 0 && s.autoCheckIn) {
                 checkInUseCase.checkIn(s.today, MealType.BREAKFAST, clock.instant())
             }
+            editingPlanId = -1L
             _events.send(CreateEvent.Generated)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e // 取消必须重抛（coroutines-best-practices §4）
@@ -282,19 +357,30 @@ class CreateViewModel(
 
 // ---------- Screen ----------
 
-/** 新建计划 Screen（全屏无底栏） */
+/** 新建 / 编辑计划 Screen（全屏无底栏；planId ≥ 0 为编辑模式） */
 @Composable
 fun CreateScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    planId: Long = -1L,
 ) {
     val vm: CreateViewModel = koinViewModel()
     val state by vm.uiState.collectAsState()
 
+    // 编辑模式：planId 进入时加载现有计划预填
+    LaunchedEffect(planId) {
+        if (planId >= 0) vm.loadForEdit(planId)
+    }
+
+    val context = LocalContext.current
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
             when (event) {
-                CreateEvent.Generated -> onBack()
+                CreateEvent.Generated -> {
+                    // IN-02：计划变更后刷新桌面小组件（updatePeriodMillis=0，事件驱动）
+                    Fast16Widget().updateAll(context)
+                    onBack()
+                }
             }
         }
     }
@@ -313,9 +399,9 @@ fun CreateScreen(
 @Composable
 private fun CreateContent(
     state: CreateUiState.Content,
+    modifier: Modifier = Modifier,
     onIntent: (CreateIntent) -> Unit,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
@@ -331,10 +417,19 @@ private fun CreateContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                PixelText(text = "NEW PLAN", color = PixelColors.white, fontSize = PixelType.Size.xs, digital = true)
+                PixelText(
+                    text = if (state.isEdit) "EDIT PLAN" else "NEW PLAN",
+                    color = PixelColors.white,
+                    fontSize = PixelType.Size.xs,
+                    digital = true,
+                )
                 Spacer(modifier = Modifier.height(2.dp))
                 PixelText(
-                    text = if (state.step == 1) "第 1 步 · 早餐时间" else "第 2 步 · 选方案 + 微调",
+                    text = if (state.isEdit) {
+                        if (state.step == 1) "编辑今日计划 · 第 1 步" else "编辑今日计划 · 第 2 步"
+                    } else {
+                        if (state.step == 1) "第 1 步 · 早餐时间" else "第 2 步 · 选方案 + 微调"
+                    },
                     color = PixelColors.gray,
                     fontSize = PixelType.Size.xs,
                 )

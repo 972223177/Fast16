@@ -2,6 +2,10 @@ package com.ly.fast16.feature.create.ui
 
 import com.ly.fast16.core.time.Time
 import com.ly.fast16.data.local.AppSettings
+import com.ly.fast16.domain.model.Meal
+import com.ly.fast16.domain.model.MealPlan
+import com.ly.fast16.domain.model.MealType
+import com.ly.fast16.domain.model.PlanStatus
 import com.ly.fast16.domain.model.ReminderMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -90,5 +94,47 @@ class CreateReducerTest {
         assertTrue(s1.autoCheckIn)
         val s2 = CreateReducer.reduce(s1, CreateIntent.ToggleAutoCheckIn) as CreateUiState.Content
         assertFalse(s2.autoCheckIn)
+    }
+
+    // ---------- 编辑模式（CreateRoute.planId ≥ 0） ----------
+
+    private fun existingPlan() = MealPlan(
+        id = 7,
+        date = today,
+        windowStart = Time.at(today, LocalTime.of(8, 0), zone),
+        windowEnd = Time.at(today, LocalTime.of(16, 0), zone),
+        status = PlanStatus.ACTIVE,
+    )
+
+    private fun existingMeals() = listOf(
+        Meal(id = 71, planId = 7, type = MealType.BREAKFAST, mealTime = Time.at(today, LocalTime.of(8, 0), zone), prepMinutes = 0),
+        Meal(id = 72, planId = 7, type = MealType.LUNCH, mealTime = Time.at(today, LocalTime.of(12, 0), zone), prepMinutes = 30),
+        Meal(id = 73, planId = 7, type = MealType.DINNER, mealTime = Time.at(today, LocalTime.of(15, 30), zone), prepMinutes = 45),
+    )
+
+    @Test
+    fun editInitial_prefillsFromExistingPlan() {
+        val s = CreateReducer.editInitial(settings, existingPlan(), existingMeals(), zone)
+        assertTrue(s.isEdit)
+        assertEquals(LocalTime.of(8, 0), s.breakfastTime)
+        assertEquals(LocalTime.of(12, 0), s.lunchTime)
+        assertEquals(LocalTime.of(15, 30), s.dinnerTime)
+        assertEquals(30, s.prepLunch)
+        assertEquals(45, s.prepDinner)
+        // 编辑不自动打卡
+        assertFalse(s.autoCheckIn)
+        // 预填自现有合法计划 → 约束校验应通过
+        assertTrue(s.errors.isEmpty())
+    }
+
+    @Test
+    fun editInitial_missingLunchDinner_fallsBackToDefaults() {
+        val meals = listOf(
+            Meal(id = 71, planId = 7, type = MealType.BREAKFAST, mealTime = Time.at(today, LocalTime.of(8, 0), zone), prepMinutes = 0),
+        )
+        val s = CreateReducer.editInitial(settings, existingPlan(), meals, zone)
+        // 无午/晚餐 → 回退默认（与 initial 一致）
+        assertEquals(s.lunchTime, CreateReducer.initial(settings, today, zone, LocalTime.of(8, 0)).lunchTime)
+        assertEquals(settings.defaultPrepLunchMinutes, s.prepLunch)
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,7 +41,9 @@ import com.ly.fast16.core.designsystem.component.PixelMealRow
 import com.ly.fast16.core.designsystem.component.PixelNumber
 import com.ly.fast16.core.designsystem.component.PixelSectionTitle
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
+import com.ly.fast16.core.designsystem.component.PixelPageTitle
 import com.ly.fast16.core.designsystem.component.PixelText
+import com.ly.fast16.core.designsystem.component.PixelVerticalScrollbar
 import com.ly.fast16.core.designsystem.component.PixelToast
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
@@ -321,12 +324,18 @@ private fun HomeContent(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
+    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(rememberScrollState())
-            .padding(PixelShape.Spacing.lg),
+            .verticalScroll(scrollState)
+            .padding(
+                start = PixelShape.Spacing.lg,
+                end = PixelShape.Spacing.lg,
+                top = PixelShape.Spacing.lg,
+                bottom = PixelShape.Spacing.xxl,
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // 头部：TODAY + 副标题 + streak chip（原型 home-head / home-streak）
@@ -335,11 +344,8 @@ private fun HomeContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                PixelText(text = "TODAY", color = PixelColors.white, fontSize = PixelType.Size.xs, digital = true)
-                Spacer(modifier = Modifier.height(2.dp))
-                PixelText(text = state.subtitle, color = PixelColors.gray, fontSize = PixelType.Size.xs)
-            }
+            // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
+            PixelPageTitle(title = "TODAY", subtitle = state.subtitle)
             StreakChip(streak = state.streak, onClick = onOpenRecord)
         }
 
@@ -426,6 +432,14 @@ private fun HomeContent(
             }
         }
     }
+    // 像素滚动条：矮屏内容被裁时提示可滚动（右上端、贯穿高度）
+    PixelVerticalScrollbar(
+        scrollState = scrollState,
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .padding(vertical = PixelShape.Spacing.sm),
+    )
     }
 }
 

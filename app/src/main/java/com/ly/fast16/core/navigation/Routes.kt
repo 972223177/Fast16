@@ -157,9 +157,10 @@ private fun PixelBottomBar(
                     .border(BorderStroke(PixelShape.borderWidth, borderColor))
                     .padding(
                         horizontal = PixelShape.Spacing.md,
-                        vertical = PixelShape.Spacing.xs,
+                        vertical = PixelShape.Spacing.sm,
                     ),
                 horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(PixelShape.Spacing.xs),
             ) {
                 PixelSprite(
                     rows = icon,

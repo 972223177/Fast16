@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -36,11 +37,13 @@ import com.ly.fast16.core.designsystem.component.PixelCalendar
 import com.ly.fast16.core.designsystem.component.PixelCard
 import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelLoading
+import com.ly.fast16.core.designsystem.component.PixelPageTitle
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
 import com.ly.fast16.core.designsystem.component.PixelSectionTitle
 import com.ly.fast16.core.designsystem.component.PixelStatBars
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.component.PixelToast
+import com.ly.fast16.core.designsystem.component.PixelVerticalScrollbar
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
@@ -261,17 +264,22 @@ private fun RecordContent(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
+    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(rememberScrollState())
-            .padding(PixelShape.Spacing.lg),
+            .verticalScroll(scrollState)
+            .padding(
+                start = PixelShape.Spacing.lg,
+                end = PixelShape.Spacing.lg,
+                top = PixelShape.Spacing.lg,
+                bottom = PixelShape.Spacing.xxl,
+            ),
         horizontalAlignment = Alignment.Start,
     ) {
-        PixelText(text = "RECORD", color = PixelColors.white, fontSize = PixelType.Size.xs, digital = true)
-        Spacer(modifier = Modifier.height(2.dp))
-        PixelText(text = "统计概览 · 日历打卡（点日期可补打卡）", color = PixelColors.gray, fontSize = PixelType.Size.xs)
+        // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
+        PixelPageTitle(title = "RECORD", subtitle = "统计概览 · 日历打卡（点日期可补打卡）")
         Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
         Box(
             modifier = Modifier
@@ -406,6 +414,14 @@ private fun RecordContent(
             }
         }
     }
+    // 像素滚动条：矮屏内容被裁时提示可滚动（右上端、贯穿高度）
+    PixelVerticalScrollbar(
+        scrollState = scrollState,
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .padding(vertical = PixelShape.Spacing.sm),
+    )
     }
 
     // 删除计划确认（PixelDialog）

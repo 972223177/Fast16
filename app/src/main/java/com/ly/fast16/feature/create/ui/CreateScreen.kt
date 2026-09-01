@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,7 +35,9 @@ import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCard
 import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelStepper
+import com.ly.fast16.core.designsystem.component.PixelPageTitle
 import com.ly.fast16.core.designsystem.component.PixelText
+import com.ly.fast16.core.designsystem.component.PixelVerticalScrollbar
 import com.ly.fast16.core.designsystem.component.PixelToast
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
@@ -429,12 +432,18 @@ private fun CreateContent(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
+    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(rememberScrollState())
-            .padding(PixelShape.Spacing.lg),
+            .verticalScroll(scrollState)
+            .padding(
+                start = PixelShape.Spacing.lg,
+                end = PixelShape.Spacing.lg,
+                top = PixelShape.Spacing.lg,
+                bottom = PixelShape.Spacing.xxl,
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // 顶部：NEW PLAN + 步骤标签 + 取消（原型 create-head）
@@ -443,24 +452,15 @@ private fun CreateContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                PixelText(
-                    text = if (state.isEdit) "EDIT PLAN" else "NEW PLAN",
-                    color = PixelColors.white,
-                    fontSize = PixelType.Size.xs,
-                    digital = true,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                PixelText(
-                    text = if (state.isEdit) {
-                        if (state.step == 1) "编辑今日计划 · 第 1 步" else "编辑今日计划 · 第 2 步"
-                    } else {
-                        if (state.step == 1) "第 1 步 · 早餐时间" else "第 2 步 · 选方案 + 微调"
-                    },
-                    color = PixelColors.gray,
-                    fontSize = PixelType.Size.xs,
-                )
-            }
+            // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
+            PixelPageTitle(
+                title = if (state.isEdit) "EDIT PLAN" else "NEW PLAN",
+                subtitle = if (state.isEdit) {
+                    if (state.step == 1) "编辑今日计划 · 第 1 步" else "编辑今日计划 · 第 2 步"
+                } else {
+                    if (state.step == 1) "第 1 步 · 早餐时间" else "第 2 步 · 选方案 + 微调"
+                },
+            )
             // 取消（ghost sm，回首页）
             Box(
                 modifier = Modifier
@@ -521,6 +521,14 @@ private fun CreateContent(
             )
         }
     }
+    // 像素滚动条：矮屏内容被裁时提示可滚动（右上端、贯穿高度）
+    PixelVerticalScrollbar(
+        scrollState = scrollState,
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .padding(vertical = PixelShape.Spacing.sm),
+    )
     }
 }
 

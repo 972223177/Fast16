@@ -11,6 +11,7 @@ import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelMotion
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 像素礼花（成功反馈：生成计划 / 日常打卡 / 三餐全打卡）。
@@ -44,10 +45,10 @@ fun PixelConfetti(
     var index by remember(burst) { mutableIntStateOf(0) }
     LaunchedEffect(burst) {
         // 轻微入场延迟后逐帧播放（阶跃扩散，最后回调移除）
-        delay(PixelMotion.Pop.STEP_MS)
+        delay(PixelMotion.Pop.STEP_MS.milliseconds)
         for (i in frames.indices) {
             index = i
-            delay(PixelMotion.FRAME_MS)
+            delay(PixelMotion.FRAME_MS.milliseconds)
         }
         onFinished()
     }

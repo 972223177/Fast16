@@ -5,6 +5,7 @@ import androidx.sqlite.driver.AndroidSQLiteDriver
 import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.notification.NotificationFactory
 import com.ly.fast16.core.notification.VibratorCompat
+import com.ly.fast16.core.plan.AutoPlanGenerator
 import com.ly.fast16.core.system.ExactAlarmGate
 import com.ly.fast16.core.system.NotificationPermission
 import com.ly.fast16.core.scheduling.AlarmPlanScheduler
@@ -64,6 +65,8 @@ val dataModule: Module = module {
     single<PlanRepository> { LocalPlanRepository(get(), get()) }
     single<CheckInRepository> { LocalCheckInRepository(get()) }
     single<CheckInUseCase> { DefaultCheckInUseCase(get(), get()) }
+    // 早餐打卡自动生成（Home「打卡现在这餐」入口；Settings 由调用方读出传入，无 data 依赖）
+    single { AutoPlanGenerator(get(), get()) }
 }
 
 /**

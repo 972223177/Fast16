@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -21,8 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.ly.fast16.core.designsystem.theme.LocalPixelFonts
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelMotion
@@ -30,6 +29,7 @@ import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 像素弹窗容器（基建文档 §2.4 / 设计方案 §8.8）。
@@ -62,7 +62,7 @@ fun PixelDialog(
                 val exitSteps = PixelMotion.Pop.EXIT_STEPS
                 for (i in exitSteps - 1 downTo 1) {
                     exitFrame = steps * i / exitSteps
-                    delay(PixelMotion.Pop.STEP_MS)
+                    delay(PixelMotion.Pop.STEP_MS.milliseconds)
                 }
                 exitFrame = 0
                 onDismiss()
@@ -87,7 +87,7 @@ fun PixelDialog(
                     PixelTypewriterText(
                         text = title,
                         color = PixelColors.yellow,
-                        style = PixelType.cjkText,
+                        style = PixelType.cjkText.copy(fontFamily = LocalPixelFonts.current.cjk),
                     )
                     Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
                     content()

@@ -5,12 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,6 +29,9 @@ import com.ly.fast16.core.designsystem.token.PixelType
  * 三餐时间轴行（原型 index.html meal-row 直接移植）：
  * 碗图标 + 餐名 + 时刻（黄）+ 备餐（灰）+ 状态点 + 打卡按钮。
  * 状态点语义：● 已打卡（绿）/ ○ 待打卡（黄）/ - 无计划（灰）。
+ *
+ * @param onEditPrep 点击备餐信息编辑备餐时长（null = 不可编辑，备餐文字灰显；
+ *       非 null 时文字转黄——与候选卡/箭头同「可交互」语义）
  */
 @Composable
 fun PixelMealRow(
@@ -39,6 +42,7 @@ fun PixelMealRow(
     hasMeal: Boolean,
     onCheckIn: () -> Unit,
     modifier: Modifier = Modifier,
+    onEditPrep: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -48,29 +52,51 @@ fun PixelMealRow(
             .padding(PixelShape.Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 碗图标（8×8 → 34×34）
+        // 碗图标（8×8 → 26×26；一屏可见优化：由 34 下调，图标非文字不涉点阵清晰度）
         PixelSprite(
             rows = ICON_BOWL,
-            modifier = Modifier.size(34.dp),
+            modifier = Modifier.size(26.dp),
             contentDescription = "$name 图标",
         )
 
         Spacer(modifier = Modifier.width(PixelShape.Spacing.md))
 
-        Column(modifier = Modifier.weight(1f)) {
-            PixelText(text = name, color = PixelColors.white, fontSize = PixelType.Size.xs)
-            Spacer(modifier = Modifier.height(4.dp))
+        // 一屏可见优化：餐名/时刻/备餐由 3 行堆叠压成单行 —— 原 3 行文字撑到 ~53dp
+        // 是 tile 高度瓶颈，单行后降到 ~14dp，三餐合计省 ~120dp。
+        // 备餐为次要信息，宽度不足时单行截断（maxLines=1），绝不换行把 tile 撑回多行。
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.xs),
+        ) {
+            PixelText(
+                text = name,
+                color = PixelColors.white,
+                fontSize = PixelType.Size.xs,
+                maxLines = 1,
+            )
             PixelText(
                 text = timeLabel,
                 color = PixelColors.yellow,
                 fontSize = PixelType.Size.xs,
                 digital = true,
+                maxLines = 1,
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            // 备餐信息可点编辑：黄色 = 可交互（与候选卡/箭头同语义），灰色 = 不可编辑
             PixelText(
-                text = if (prepMinutes > 0) "备餐 $prepMinutes 分" else "直接开吃",
-                color = PixelColors.gray,
+                text = if (prepMinutes > 0) "备餐${prepMinutes}分" else "直接开吃",
+                color = if (onEditPrep != null) PixelColors.yellow else PixelColors.gray,
                 fontSize = PixelType.Size.xs,
+                maxLines = 1,
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        if (onEditPrep != null) {
+                            Modifier.clickable(onClick = onEditPrep)
+                        } else {
+                            Modifier
+                        },
+                    ),
             )
         }
 

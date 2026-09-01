@@ -15,6 +15,11 @@ import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
+/** 字体模式：PIXEL = 像素风（Fusion Pixel / Press Start 2P）；SYSTEM = 系统默认字体 */
+enum class FontMode {
+    PIXEL, SYSTEM,
+}
+
 /** 全局偏好快照（完整定义 §1.5） */
 data class AppSettings(
     val windowHours: Int,
@@ -26,6 +31,8 @@ data class AppSettings(
     val defaultReminderMode: ReminderMode,
     val widgetShowFasting: Boolean,
     val onboardingSeen: Boolean,
+    /** 字体模式（默认系统字体，可切换像素风） */
+    val fontMode: FontMode = FontMode.SYSTEM,
 )
 
 /**
@@ -44,6 +51,7 @@ class SettingsStore(private val context: Context) {
         val DEFAULT_REMINDER_MODE = stringPreferencesKey("default_reminder_mode")
         val WIDGET_SHOW_FASTING = booleanPreferencesKey("widget_show_fasting")
         val ONBOARDING_SEEN = booleanPreferencesKey("onboarding_seen")
+        val FONT_MODE = stringPreferencesKey("font_mode")
     }
 
     /** 偏好流（缺省值对齐 §1.5） */
@@ -60,6 +68,9 @@ class SettingsStore(private val context: Context) {
                 ?: ReminderMode.NOTIFY,
             widgetShowFasting = p[Keys.WIDGET_SHOW_FASTING] ?: true,
             onboardingSeen = p[Keys.ONBOARDING_SEEN] ?: false,
+            fontMode = p[Keys.FONT_MODE]
+                ?.let { runCatching { FontMode.valueOf(it) }.getOrNull() }
+                ?: FontMode.SYSTEM,
         )
     }
 
@@ -84,6 +95,8 @@ class SettingsStore(private val context: Context) {
     suspend fun setWidgetShowFasting(show: Boolean) = edit { it[Keys.WIDGET_SHOW_FASTING] = show }
 
     suspend fun setOnboardingSeen(seen: Boolean) = edit { it[Keys.ONBOARDING_SEEN] = seen }
+
+    suspend fun setFontMode(mode: FontMode) = edit { it[Keys.FONT_MODE] = mode.name }
 
     private suspend fun edit(block: (MutablePreferences) -> Unit) {
         context.settingsDataStore.edit(block)

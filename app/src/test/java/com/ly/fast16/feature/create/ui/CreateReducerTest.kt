@@ -42,6 +42,42 @@ class CreateReducerTest {
     }
 
     @Test
+    fun defaultBreakfast_clampsOutOfRange() {
+        // 晚上进 Create 默认早餐不应是当前时间（候选跨午夜 → 流程死）
+        assertEquals(LocalTime.of(8, 0), CreateReducer.defaultBreakfast(LocalTime.of(20, 0)))
+        assertEquals(LocalTime.of(8, 0), CreateReducer.defaultBreakfast(LocalTime.of(0, 30)))
+        // 合理范围内保持当前时间
+        assertEquals(LocalTime.of(8, 0), CreateReducer.defaultBreakfast(LocalTime.of(8, 0)))
+        assertEquals(LocalTime.of(4, 0), CreateReducer.defaultBreakfast(LocalTime.of(4, 0)))
+        assertEquals(LocalTime.of(14, 0), CreateReducer.defaultBreakfast(LocalTime.of(14, 0)))
+    }
+
+    @Test
+    fun clampedBreakfast_noErrors_andShiftDateKeepsValid() {
+        // 回归：clamp 后（08:00）进 Create，默认候选合法；选明天日期仍合法，流程可走
+        val s1 = CreateReducer.initial(settings, today, zone, CreateReducer.defaultBreakfast(LocalTime.of(20, 0)))
+        assertTrue("clamp 后默认候选不应有错误，实际=${s1.errors}", s1.errors.isEmpty())
+
+        val s2 = CreateReducer.reduce(s1, CreateIntent.ShiftDate(1)) as CreateUiState.Content
+        assertEquals(today.plusDays(1), s2.date)
+        assertTrue("明天日期候选不应有错误，实际=${s2.errors}", s2.errors.isEmpty())
+
+        val s3 = CreateReducer.reduce(s2, CreateIntent.NextStep) as CreateUiState.Content
+        assertTrue(s3.step == 2 && s3.errors.isEmpty())
+    }
+
+    @Test
+    fun breakfastStepper_respectsRange() {
+        // 早餐范围 [04:00, 14:00]：边界上不可再增减（防止候选跨午夜）
+        val min = CreateReducer.initial(settings, today, zone, CreateReducer.BREAKFAST_MIN)
+        val atMin = CreateReducer.reduce(min, CreateIntent.PickBreakfast(CreateReducer.BREAKFAST_MIN.minusMinutes(5))) as CreateUiState.Content
+        assertEquals(CreateReducer.BREAKFAST_MIN, atMin.breakfastTime)
+        val max = CreateReducer.initial(settings, today, zone, CreateReducer.BREAKFAST_MAX)
+        val atMax = CreateReducer.reduce(max, CreateIntent.PickBreakfast(CreateReducer.BREAKFAST_MAX.plusMinutes(5))) as CreateUiState.Content
+        assertEquals(CreateReducer.BREAKFAST_MAX, atMax.breakfastTime)
+    }
+
+    @Test
     fun pickBreakfast_regenCandidatesAndResetSelection() {
         val s1 = initial(LocalTime.of(8, 0))
         val s2 = CreateReducer.reduce(s1, CreateIntent.PickBreakfast(LocalTime.of(9, 0))) as CreateUiState.Content
@@ -89,11 +125,28 @@ class CreateReducerTest {
     }
 
     @Test
-    fun toggleAutoCheckIn_flipsFlag() {
+    fun shiftDate_forward_movesDateAndRegen() {
         val s1 = initial()
-        assertTrue(s1.autoCheckIn)
-        val s2 = CreateReducer.reduce(s1, CreateIntent.ToggleAutoCheckIn) as CreateUiState.Content
-        assertFalse(s2.autoCheckIn)
+        val s2 = CreateReducer.reduce(s1, CreateIntent.ShiftDate(1)) as CreateUiState.Content
+        assertEquals(today.plusDays(1), s2.date)
+        // 日期后移 → 候选同步重生成（早餐时刻落在新日期）
+        assertTrue(s2.candidates.isNotEmpty())
+    }
+
+    @Test
+    fun shiftDate_backward_blockedForNewPlan() {
+        // 新建模式不可选过去日期：今天减 1 天应被拒绝（date 不变）
+        val s1 = initial()
+        val s2 = CreateReducer.reduce(s1, CreateIntent.ShiftDate(-1)) as CreateUiState.Content
+        assertEquals(today, s2.date)
+    }
+
+    @Test
+    fun shiftDate_backward_allowedForEdit() {
+        // 编辑模式允许原计划日期（可早于今天）
+        val s1 = CreateReducer.editInitial(settings, existingPlan(), existingMeals(), zone)
+        val s2 = CreateReducer.reduce(s1, CreateIntent.ShiftDate(-1)) as CreateUiState.Content
+        assertEquals(today.minusDays(1), s2.date)
     }
 
     // ---------- 编辑模式（CreateRoute.planId ≥ 0） ----------
@@ -121,8 +174,6 @@ class CreateReducerTest {
         assertEquals(LocalTime.of(15, 30), s.dinnerTime)
         assertEquals(30, s.prepLunch)
         assertEquals(45, s.prepDinner)
-        // 编辑不自动打卡
-        assertFalse(s.autoCheckIn)
         // 预填自现有合法计划 → 约束校验应通过
         assertTrue(s.errors.isEmpty())
     }

@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ly.fast16.core.designsystem.theme.LocalPixelFonts
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelShape
@@ -25,7 +26,7 @@ import com.ly.fast16.core.designsystem.token.PixelType
  * 像素按钮（基建文档 §2.4 / pixel-motion §1）：
  * - primary：绿底深字（「开始吃」/ 主操作）
  * - secondary：面板底 + 白描边
- * - 按压反馈：按下**下沉 1px**（位移，非缩放）+ 描边提亮（~80ms 阶跃，无平滑）
+ * - 按压反馈：按下**下沉 2px**（位移，非缩放）+ 描边提亮（~80ms 阶跃，无平滑）
  * - 禁用态：灰字灰描边，不可点
  */
 @Composable
@@ -66,7 +67,7 @@ fun PixelButton(
                 selected = false,
                 enabled = enabled,
                 interactionSource = interactionSource,
-                indication = null, // 像素风：无 M3 ripple，用 1px 下沉 + 描边反馈
+                indication = null, // 像素风：无 M3 ripple，用 2px 下沉 + 描边反馈
                 onClick = onClick,
             )
             .background(color = bg, shape = PixelShape.stair)
@@ -77,7 +78,8 @@ fun PixelButton(
         Text(
             text = text,
             color = content,
-            style = PixelType.cjkText,
+            // 按钮文字按字体模式动态取（像素风 = Fusion Pixel；系统 = 默认）
+            style = PixelType.cjkText.copy(fontFamily = LocalPixelFonts.current.cjk),
         )
     }
 }

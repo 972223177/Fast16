@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.domain.model.CharacterState
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 像素角色「小健」（设计方案 §8.6 / 原型 index.html 角色资产直接移植）：
@@ -23,19 +25,19 @@ import kotlinx.coroutines.delay
  * 帧数据与 UI 原型 Canvas 逐像素绘制同构（CH_IDLE1 等），仅需保持字符网格一致。
  *
  * @param state 角色状态（IDLE/FASTING 共用待机帧；PREP/EAT/REST 带道具）
- * @param scale 像素放大倍数（默认 4 → 64×80dp，与原型 64×80 显示一致）
+ * @param scale 像素放大倍数（一屏可见优化：默认 3 → 48×60dp；仍为整数倍，符合像素网格铁律）
  */
 @Composable
 fun PixelCharacter(
     state: CharacterState,
     modifier: Modifier = Modifier,
-    scale: Float = 4f,
+    scale: Float = 3f,
     contentDescription: String = "小健",
 ) {
     var frame by remember { mutableIntStateOf(0) }
     LaunchedEffect(state) {
         while (true) {
-            delay(260)
+            delay(260.milliseconds)
             frame++
         }
     }
@@ -73,7 +75,8 @@ fun PixelCharacter(
                     rows = PROP_PAN,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = (0.5 * scale).dp, bottom = (0.5 * scale).dp)
+                        // 取整到整数 px：scale=3 时 0.5*3=1.5dp 落半像素，破坏像素网格
+                        .padding(start = (0.5 * scale).roundToInt().dp, bottom = (0.5 * scale).roundToInt().dp)
                         .size((11 * scale).dp, (4 * scale).dp),
                 )
             }
@@ -103,14 +106,15 @@ fun PixelCharacter(
                     rows = spark,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = (0.5 * scale).dp, end = (0.5 * scale).dp)
+                        // 取整到整数 px（同上，scale=3 下 0.5×3 落半像素）
+                        .padding(top = (0.5 * scale).roundToInt().dp, end = (0.5 * scale).roundToInt().dp)
                         .size((5 * scale).dp, (5 * scale).dp),
                 )
                 PixelSprite(
                     rows = spark,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = (0.5 * scale).dp, bottom = (1 * scale).dp)
+                        .padding(start = (0.5 * scale).roundToInt().dp, bottom = (1 * scale).dp)
                         .size((5 * scale).dp, (5 * scale).dp),
                 )
             }

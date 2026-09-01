@@ -28,10 +28,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.Scaffold
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ly.fast16.core.designsystem.component.PixelButton
@@ -290,17 +291,22 @@ private fun RecordContent(
         modifier = Modifier
             .fillMaxSize()
             .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(scrollState)
+            .verticalScroll(
+                state = scrollState,
+                // 与 Home 一致：关掉 overscroll 边缘拉伸，避免「还能滚」的错觉
+                overscrollEffect = null,
+            )
             .padding(
                 start = PixelShape.Spacing.lg,
                 end = PixelShape.Spacing.lg,
                 top = PixelShape.Spacing.lg,
-                bottom = PixelShape.Spacing.xxl,
+                // 底部与 PixelBottomBar 相邻，无需 xxl 留白
+                bottom = PixelShape.Spacing.lg,
             ),
         horizontalAlignment = Alignment.Start,
     ) {
         // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
-        PixelPageTitle(title = "RECORD", subtitle = "统计概览 · 日历打卡（点日期可补打卡）")
+        PixelPageTitle(title = "RECORD", subtitle = "统计概览 · 日历打卡")
         Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
         Box(
             modifier = Modifier
@@ -321,11 +327,11 @@ private fun RecordContent(
                     Column(modifier = Modifier.width(96.dp)) {
                         PixelText(text = "连续打卡", color = PixelColors.gray, fontSize = PixelType.Size.xs)
                         Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
-                        // spec 2.2：连续打卡数字 40px
+                        // 连续打卡大数字（一屏可见优化：spec 2.2 的 40px 下调至 Size.lg = 28px）
                         PixelText(
                             text = "${state.streak}",
                             color = PixelColors.green,
-                            fontSize = 40.sp,
+                            fontSize = PixelType.Size.lg,
                             digital = true,
                         )
                     }
@@ -336,7 +342,7 @@ private fun RecordContent(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
 
                 PixelText(text = "近 7 天完成", color = PixelColors.gray, fontSize = PixelType.Size.xs)
                 Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
@@ -350,107 +356,123 @@ private fun RecordContent(
         PixelSectionTitle(text = "打卡日历")
         Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
 
-        // 月历（原型 cal-grid）
+        // 月历（原型 cal-grid）；未来日期禁用（maxSelectable = today → 禁止未来预打卡）
         PixelCalendar(
             month = state.month,
             checked = state.checked,
             selected = state.selected,
             today = state.today,
+            maxSelectable = state.today,
             onMonthChange = { onIntent(RecordIntent.SwitchMonth(if (it > state.month) 1 else -1)) },
             onSelectDay = { onIntent(RecordIntent.TapDate(it)) },
         )
 
-        // 选中日详情（原型 cal-detail：三餐补打卡）
-        state.selected?.let { selectedDate ->
-            Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
-            PixelCard(modifier = Modifier.fillMaxWidth()) {
-                                Column {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        // 日期加大（数字像素），与设计稿一致
-                                        PixelText(text = selectedDate.toString(), color = PixelColors.white, fontSize = PixelType.Size.sm, digital = true)
-                                        PixelButton(
-                                            text = "关闭",
-                                            onClick = { onIntent(RecordIntent.TapDate(null)) },
-                                            primary = false,
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-                                    MealType.entries.forEachIndexed { index, type ->
-                                        val done = type in state.selectedChecked
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = PixelShape.Spacing.sm),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            PixelText(
-                                                text = mealName(type),
-                                                color = PixelColors.white,
-                                                fontSize = PixelType.Size.xs,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            // 未打卡用蓝底主操作；已打卡灰底描边（与设计稿一致）
-                                            PixelButton(
-                                                text = if (done) "已打卡" else "补打卡",
-                                                onClick = { onIntent(RecordIntent.BackfillCheckIn(type)) },
-                                                primary = !done,
-                                            )
-                                        }
-                                        // 餐间像素分隔线（最后一行无）
-                                        if (index != MealType.entries.lastIndex) {
-                                            Spacer(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(1.dp)
-                                                    .background(Color.Black),
-                                            )
-                                        }
-                                    }
+    }
+    // 像素滚动条：仅在内容真的溢出时出现（统计+日历一屏可见 → 不画无意义的空轨道）
+    if (scrollState.maxValue > 0) {
+        PixelVerticalScrollbar(
+            scrollState = scrollState,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .padding(vertical = PixelShape.Spacing.sm),
+        )
+    }
+    }
 
-                    // 计划管理区（该日有计划时：编辑 / 删除）
-                    if (state.hasPlanOnSelected) {
-                        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.sm),
-                            verticalAlignment = Alignment.CenterVertically,
+    // 选中日补打卡：像素弹窗（一屏可见优化：原为日历下方内嵌面板，占 ~230dp 撑高页面；
+    // 改弹窗后不占滚动布局，统计 + 日历一屏放下）。点外部 / 关闭按钮 → 取消选中并收起。
+    state.selected?.let { selectedDate ->
+        PixelDialog(
+            onDismiss = { onIntent(RecordIntent.TapDate(null)) },
+            title = "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日 · 打卡",
+        ) {
+            Column {
+                // 无计划日期的语义说明：删除计划后打卡记录独立保留（check_ins 与计划解耦），
+                // 三绿点 = 当日打卡事实，非「计划完成」；「可撤销」= 用户主动纠错（误补卡），
+                // 与「系统不自动清」不冲突
+                if (!state.hasPlanOnSelected) {
+                    PixelText(
+                        text = if (state.selectedChecked.isNotEmpty()) {
+                            "该日无计划，打卡记录独立保留 · 可撤销"
+                        } else {
+                            "该日无计划，可直接补打卡"
+                        },
+                        color = PixelColors.gray,
+                        fontSize = PixelType.Size.xs,
+                    )
+                    Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                }
+                MealType.entries.forEachIndexed { index, type ->
+                    val done = type in state.selectedChecked
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = PixelShape.Spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PixelText(
+                            text = mealName(type),
+                            color = PixelColors.white,
+                            fontSize = PixelType.Size.xs,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // 未打卡用蓝底主操作；已打卡灰底描边（与设计稿一致）
+                        PixelButton(
+                            text = if (done) "已打卡" else "补打卡",
+                            onClick = { onIntent(RecordIntent.BackfillCheckIn(type)) },
+                            primary = !done,
+                        )
+                    }
+                    // 餐间像素分隔线（最后一行无）
+                    if (index != MealType.entries.lastIndex) {
+                        Spacer(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(Color.Black),
+                        )
+                    }
+                }
+
+                // 计划管理区（该日有计划时：编辑 / 删除）
+                if (state.hasPlanOnSelected) {
+                    Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PixelButton(
+                            text = "编辑计划",
+                            onClick = { onEditPlan(state.selectedPlanId) },
+                            primary = false,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // 删除：红色按钮 → 确认弹窗；与 PixelButton 规格对齐（等高不显扁）
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(PixelColors.red, PixelShape.stair)
+                                .border(BorderStroke(PixelShape.borderWidth, Color.Black), PixelShape.stair)
+                                .clickable { showDeleteConfirm = true }
+                                .padding(horizontal = PixelShape.Spacing.lg, vertical = PixelShape.Spacing.sm),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            PixelButton(
-                                text = "编辑计划",
-                                onClick = { onEditPlan(state.selectedPlanId) },
-                                primary = false,
-                                modifier = Modifier.weight(1f),
-                            )
-                            // 删除：红色按钮 → 确认弹窗；字号/padding 与 PixelButton 规格对齐（等高不显扁）
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .background(PixelColors.red, PixelShape.stair)
-                                    .border(BorderStroke(PixelShape.borderWidth, Color.Black), PixelShape.stair)
-                                    .clickable { showDeleteConfirm = true }
-                                    .padding(horizontal = PixelShape.Spacing.lg, vertical = PixelShape.Spacing.sm),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                PixelText(text = "删除计划", color = PixelColors.bg, fontSize = PixelType.Size.sm)
-                            }
+                            PixelText(text = "删除计划", color = PixelColors.bg, fontSize = PixelType.Size.sm)
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+                PixelButton(
+                    text = "关闭",
+                    onClick = { onIntent(RecordIntent.TapDate(null)) },
+                    primary = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
-    }
-    // 像素滚动条：矮屏内容被裁时提示可滚动（右上端、贯穿高度）
-    PixelVerticalScrollbar(
-        scrollState = scrollState,
-        modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .fillMaxHeight()
-            .padding(vertical = PixelShape.Spacing.sm),
-    )
     }
 
     // 删除计划确认（PixelDialog）
@@ -511,26 +533,75 @@ private fun mealName(type: MealType): String = when (type) {
     MealType.DINNER -> "晚餐"
 }
 
+/** Preview 假数据（典型态：有统计 + 选中某日） */
+private fun recordPreviewState() = RecordUiState.Content(
+    month = YearMonth.of(2026, 8),
+    selected = LocalDate.of(2026, 8, 30),
+    checked = mapOf(
+        LocalDate.of(2026, 8, 30) to setOf(MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER),
+        LocalDate.of(2026, 8, 29) to setOf(MealType.BREAKFAST, MealType.LUNCH),
+        LocalDate.of(2026, 8, 28) to setOf(MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER),
+    ),
+    streak = 12,
+    monthRate = 0.83f,
+    weekRate = 1f,
+    weekBars = listOf(3, 2, 3, 1, 3, 3, 3),
+    selectedChecked = setOf(MealType.BREAKFAST),
+    hasPlanOnSelected = true,
+    selectedPlanId = 1L,
+    today = LocalDate.of(2026, 8, 31),
+)
+
 @PreviewPixel
 @Composable
 private fun RecordScreenPreview() {
     PixelTheme {
         RecordContent(
-            state = RecordUiState.Content(
-                month = YearMonth.of(2026, 8),
-                selected = null,
-                checked = mapOf(
-                    LocalDate.of(2026, 8, 30) to setOf(MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER),
-                    LocalDate.of(2026, 8, 29) to setOf(MealType.BREAKFAST, MealType.LUNCH),
-                    LocalDate.of(2026, 8, 28) to setOf(MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER),
-                ),
-                streak = 12,
-                monthRate = 0.83f,
-                weekRate = 1f,
-                weekBars = listOf(3, 2, 3, 1, 3, 3, 3),
-                selectedChecked = emptySet(),
-                today = LocalDate.of(2026, 8, 31),
-            ),
+            state = recordPreviewState(),
+            onIntent = {},
+            onEditPlan = {},
+        )
+    }
+}
+
+/** 主流屏一屏可见验证：360×800dp + 系统栏/底栏 */
+@Preview(
+    name = "Record · 主流屏 360x800",
+    device = "spec:width=360dp,height=800dp,dpi=480",
+    showSystemUi = true,
+    showBackground = true,
+    backgroundColor = 0xFF0F0F1A,
+)
+@Composable
+private fun RecordScreenMainstreamPreview() {
+    PixelTheme {
+        Scaffold(
+            containerColor = PixelColors.bg,
+            bottomBar = { Box(modifier = Modifier.height(62.dp)) },
+        ) { innerPadding ->
+            RecordContent(
+                state = recordPreviewState(),
+                onIntent = {},
+                onEditPlan = {},
+                modifier = Modifier.padding(innerPadding),
+            )
+        }
+    }
+}
+
+/** 无计划但已打卡（删除计划后）：弹窗顶部显示「打卡记录独立保留」说明 */
+@Preview(
+    name = "Record · 无计划已打卡",
+    device = "spec:width=360dp,height=800dp,dpi=480",
+    showSystemUi = true,
+    showBackground = true,
+    backgroundColor = 0xFF0F0F1A,
+)
+@Composable
+private fun RecordScreenNoPlanPreview() {
+    PixelTheme {
+        RecordContent(
+            state = recordPreviewState().copy(hasPlanOnSelected = false, selectedPlanId = -1L),
             onIntent = {},
             onEditPlan = {},
         )

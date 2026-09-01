@@ -17,11 +17,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
-import com.ly.fast16.core.designsystem.token.PixelMotion
 import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
 import com.ly.fast16.core.notification.VibratorCompat
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 像素轻提示（基建 §2.4 M1 / spec 3.10 .toast）：
@@ -45,7 +45,7 @@ fun PixelToast(
         if (show) {
             // P2：轻提示伴随 80ms 轻震（原型 navigator.vibrate(80)）
             if (vibrate) vibrator.buzz()
-            delay(durationMs)
+            delay(durationMs.milliseconds)
             onDismiss()
         }
     }

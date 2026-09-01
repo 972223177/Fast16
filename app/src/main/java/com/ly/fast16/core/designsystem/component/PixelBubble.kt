@@ -71,12 +71,12 @@ fun PixelBubble(
                     maxLines = 3,
                 )
             }
-            // 三角尾巴（spec 3.12 ::after：居中下方，8×8 方块像素化）
+            // 三角尾巴（spec 3.12 ::after：居中下方，方块像素化；一屏可见优化 8×8 → 6×6）
             Box(
                 modifier = Modifier
                     .offset(y = (-2).dp)
-                    .width(8.dp)
-                    .height(8.dp)
+                    .width(6.dp)
+                    .height(6.dp)
                     .background(Color.Black),
             )
         }

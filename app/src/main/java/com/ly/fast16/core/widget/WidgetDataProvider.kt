@@ -9,7 +9,6 @@ import com.ly.fast16.data.local.MealEntity
 import com.ly.fast16.domain.model.Meal
 import com.ly.fast16.domain.model.MealStatus
 import com.ly.fast16.domain.model.MealType
-import com.ly.fast16.domain.model.ReminderMode
 import com.ly.fast16.domain.schedule.FastingTimer
 import com.ly.fast16.domain.stats.StreakCalculator
 import kotlinx.coroutines.flow.first
@@ -100,9 +99,9 @@ object WidgetDataProvider {
                 if (m.prepMinutes > 0) {
                     // 距备餐 HH:mm（prepTime = mealTime − prepMinutes）
                     val diffMin = (Duration.between(now, m.prepTime).toMinutes()).coerceAtLeast(0)
-                    "下一餐 ${name} ${mealTimeStr} · 距备餐 %02d:%02d".format(diffMin / 60, diffMin % 60)
+                    "下一餐 $name $mealTimeStr · 距备餐 %02d:%02d".format(diffMin / 60, diffMin % 60)
                 } else {
-                    "下一餐 ${name} ${mealTimeStr}"
+                    "下一餐 $name $mealTimeStr"
                 }
             }
             WidgetData(

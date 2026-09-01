@@ -30,14 +30,19 @@ object PixelShape {
     /** 像素阶梯圆角 Shape（可复用给 Card / Dialog / Button 背景） */
     val stair: Shape = PixelStairShape()
 
-    /** 呼吸感间距体系（UI 拥挤优化）：8px 网格放大 ~1.3x，全 App 统一留白 */
+    /**
+     * 紧凑间距体系（一屏可见优化）：4dp 网格，全 App 统一留白。
+     *
+     * 由 8dp 网格（6/10/16/20/28/40）整体下调约 25%，用于把 Home 等内容页压进
+     * 一屏可见高度——配合 [PixelType.LineHeight] 压行高，避免用户靠滚动发现内容。
+     */
     object Spacing {
-        val xs: Dp = 6.dp
-        val sm: Dp = 10.dp
-        val md: Dp = 16.dp
-        val lg: Dp = 20.dp
-        val xl: Dp = 28.dp
-        val xxl: Dp = 40.dp
+        val xs: Dp = 4.dp
+        val sm: Dp = 8.dp
+        val md: Dp = 12.dp
+        val lg: Dp = 16.dp
+        val xl: Dp = 24.dp
+        val xxl: Dp = 32.dp
     }
 
     /** 大屏内容最大宽度（平板/横屏不拉伸，保持阅读线宽；底栏仍全宽） */

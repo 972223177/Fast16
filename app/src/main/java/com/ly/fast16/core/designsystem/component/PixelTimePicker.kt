@@ -52,7 +52,7 @@ fun PixelTimePicker(
     }
 }
 
-/** 像素步进按钮（12×12，绿底，按下 1px 下沉由 clickable 简化表达） */
+/** 像素步进按钮（28×28，绿底，按下反馈由 clickable 简化表达） */
 @Composable
 private fun StepButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
     val bg = if (enabled) PixelColors.green else PixelColors.panel.copy(alpha = 0.5f)

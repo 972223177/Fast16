@@ -16,10 +16,17 @@ import java.time.LocalDate
  *
  * 打卡写 `check_ins`（@Upsert 幂等）→ 当日存在对应 Meal 则联动置 COMPLETED；
  * 打卡与计划解耦：无计划也能补打卡。
+ *
+ * **未来日期禁止打卡**：补打卡语义 = 补「已发生」的漏记；未来预打卡会污染
+ * streak / 完成率 / 日历三点等统计聚合（check_ins 无「未来排除」派生逻辑）。
+ * Home / Widget / Create 三入口均传当天日期，此校验只拦任意日期的补打卡入口。
  */
 interface CheckInUseCase {
 
-    /** 打卡（date + mealType 幂等，重复打卡覆盖时间戳） */
+    /**
+     * 打卡（date + mealType 幂等，重复打卡覆盖时间戳）。
+     * @throws IllegalArgumentException date 晚于今天（未来日期禁止预打卡）
+     */
     suspend fun checkIn(date: LocalDate, mealType: MealType, at: Instant)
 
     /** 通知动作打卡（按 Meal 实体打卡，含 Meal 联动） */
@@ -35,6 +42,7 @@ class DefaultCheckInUseCase(
 ) : CheckInUseCase {
 
     override suspend fun checkIn(date: LocalDate, mealType: MealType, at: Instant) {
+        require(!date.isAfter(SystemTimeProvider.today())) { "不能为未来日期补打卡" }
         checkInRepository.checkIn(date, mealType, at)
         linkMealCompleted(date, mealType)
     }

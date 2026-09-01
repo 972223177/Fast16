@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -30,11 +31,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ly.fast16.core.character.SpeechCatalog
+import com.ly.fast16.core.plan.AutoPlanGenerator
+import com.ly.fast16.core.plan.AutoPlanResult
+import com.ly.fast16.core.scheduling.PlanScheduler
+import com.ly.fast16.data.local.SettingsStore
 import com.ly.fast16.core.designsystem.component.PixelBubble
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCard
@@ -43,8 +48,10 @@ import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelMealRow
 import com.ly.fast16.core.designsystem.component.PixelConfetti
 import com.ly.fast16.core.designsystem.component.PixelConfettiBurst
+import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelNumber
 import com.ly.fast16.core.designsystem.component.PixelSectionTitle
+import com.ly.fast16.core.designsystem.component.PixelStepper
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
 import com.ly.fast16.core.designsystem.component.PixelPageTitle
 import com.ly.fast16.core.designsystem.component.PixelText
@@ -70,6 +77,7 @@ import com.ly.fast16.domain.repository.PlanRepository
 import com.ly.fast16.domain.schedule.CharacterStateDeriver
 import com.ly.fast16.domain.schedule.FastingTimer
 import com.ly.fast16.domain.schedule.MealStateMachine
+import com.ly.fast16.domain.schedule.MealWindow
 import com.ly.fast16.domain.stats.StreakCalculator
 import com.ly.fast16.domain.usecase.CheckInUseCase
 import kotlinx.coroutines.delay
@@ -85,6 +93,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.YearMonth
+import kotlin.time.Duration.Companion.milliseconds
 
 // ---------- Intent ----------
 
@@ -98,6 +107,12 @@ sealed interface HomeIntent {
 
     /** 撤销打卡（已打卡餐二次点击） */
     data class UncheckIn(val mealType: MealType) : HomeIntent
+
+    /** 无计划空态「打卡现在这餐」：按 MealWindow 时段自动判定餐次 */
+    data object CheckInNow : HomeIntent
+
+    /** 编辑某餐备餐时长（分钟，0–180；tile 备餐可点编辑） */
+    data class EditPrep(val mealType: MealType, val minutes: Int) : HomeIntent
 }
 
 // ---------- State ----------
@@ -121,6 +136,10 @@ sealed interface HomeUiState {
         val windowProgress: Float,
         /** 今日计划 id（-1 = 无计划；编辑入口用） */
         val planId: Long = -1L,
+        /** 无计划时按 MealWindow 时段判定的当前餐次（空态「打卡现在这餐」用；null = 非用餐时段） */
+        val detectedMealType: MealType? = null,
+        /** 今日已打卡餐次（无计划空态展示打卡反馈；有计划的餐次在 meals 行内展示） */
+        val checkedInToday: Set<MealType> = emptySet(),
     ) : HomeUiState
 }
 
@@ -141,6 +160,9 @@ class HomeViewModel(
     private val planRepository: PlanRepository,
     private val checkInRepository: CheckInRepository,
     private val checkInUseCase: CheckInUseCase,
+    private val autoPlanGenerator: AutoPlanGenerator,
+    private val scheduler: PlanScheduler,
+    private val settingsStore: SettingsStore,
     private val clock: Clock,
 ) : ViewModel() {
 
@@ -196,6 +218,64 @@ class HomeViewModel(
                 checkInUseCase.uncheckIn(today, intent.mealType)
                 _toast.value = "已撤销 ${SpeechCatalog.mealName(intent.mealType)} 打卡"
             }
+
+            // 无计划「打卡现在这餐」：按时段判定餐次；早餐时段无计划 → 自动生成午/晚
+            HomeIntent.CheckInNow -> viewModelScope.launch {
+                val now = clock.instant()
+                val type = MealWindow.detect(Time.timeOf(now, SystemTimeProvider.zone))
+                if (type == null) {
+                    _toast.value = "现在不是用餐时段"
+                    return@launch
+                }
+                val today = SystemTimeProvider.today()
+                // 该餐今日已打卡 → 仅提示，不重复放礼花（单餐打卡的反馈靠空态「已记录」展示）
+                if (type in checkInRepository.watchMonth(YearMonth.from(today)).first()[today].orEmpty()) {
+                    _toast.value = "${SpeechCatalog.mealName(type)} 今日已打卡"
+                    return@launch
+                }
+                val generatedToast = if (type == MealType.BREAKFAST) {
+                    val settings = settingsStore.settings.first()
+                    when (autoPlanGenerator.generateFromBreakfast(
+                        now = now,
+                        zone = SystemTimeProvider.zone,
+                        windowHours = settings.windowHours,
+                        minGapMinutes = settings.minMealGapMinutes,
+                        bufferEndMinutes = settings.dinnerBufferMinutes,
+                        prepLunchDefault = settings.defaultPrepLunchMinutes,
+                        prepDinnerDefault = settings.defaultPrepDinnerMinutes,
+                        reminderMode = settings.defaultReminderMode,
+                    )) {
+                        AutoPlanResult.Created -> "已记录早餐，自动安排午餐/晚餐"
+                        AutoPlanResult.TooLate -> "已过午/晚餐时段，仅记录早餐"
+                        AutoPlanResult.AlreadyHasPlan -> null
+                    }
+                } else {
+                    null
+                }
+                checkInUseCase.checkIn(today, type, now)
+                _toast.value = generatedToast ?: "${SpeechCatalog.mealName(type)} 已打卡"
+                // 礼花：今日三餐全打卡 → 多彩大礼花；否则日常小礼花
+                val checkedCount = checkInRepository
+                    .watchMonth(YearMonth.from(today)).first()[today].orEmpty().size
+                _confetti.value = if (checkedCount >= MealType.entries.size) {
+                    PixelConfettiBurst.ALL_COMPLETED
+                } else {
+                    PixelConfettiBurst.CHECK_IN
+                }
+            }
+
+            // 编辑某餐备餐时长：写库 + 重排该计划闹钟（prepTime 派生变化）
+            is HomeIntent.EditPrep -> viewModelScope.launch {
+                val today = SystemTimeProvider.today()
+                val meal = planRepository.watchMealsByDate(today).first()
+                    .firstOrNull { it.type == intent.mealType } ?: return@launch
+                planRepository.updateMealPrep(meal.id, intent.minutes)
+                // 排程必须用落库后的真实 Meal（含 id）——AlarmReceiver 依 EXTRA_MEAL_ID 查库
+                val planPair = planRepository.watchPlanByDate(today).first() ?: return@launch
+                scheduler.cancel(planPair.first.id)
+                scheduler.schedule(planPair.first, planRepository.watchMealsByDate(today).first())
+                _toast.value = "${SpeechCatalog.mealName(intent.mealType)} 备餐 ${intent.minutes} 分钟已保存"
+            }
         }
     }
 
@@ -211,7 +291,7 @@ class HomeViewModel(
     private fun secondTicker() = flow {
         while (true) {
             emit(Unit)
-            delay(1000)
+            delay(1000.milliseconds)
         }
     }
 
@@ -272,18 +352,26 @@ class HomeViewModel(
             streak = streak,
             windowProgress = windowProgress,
             planId = plan?.id ?: -1L,
+            // 无计划时按时段判定当前餐次（空态「打卡现在这餐」按钮文案/可用性）
+            detectedMealType = if (hasPlan) null else MealWindow.detect(Time.timeOf(now, SystemTimeProvider.zone)),
+            // 今日已打卡（无计划空态反馈：单餐打卡后必须可见「已记录」，否则用户以为没打上）
+            checkedInToday = checkedSet,
         )
     }
 
     private fun bubbleText(character: CharacterState, meals: List<Meal>): String = when (character) {
         CharacterState.IDLE -> "来记录早餐，开启今天第一餐吧！"
-        CharacterState.PREP -> meals.firstOrNull { it.prepMinutes > 0 }?.let {
+        // 气泡取餐与 CharacterStateDeriver 同源：只取「reconcile 后正处于该状态」的餐。
+        // 原 firstOrNull { prepMinutes > 0 } / lastOrNull 不看 status，预打卡后会把已完成的
+        // 餐当备餐/开饭对象，导致「面板已完成、气泡还在备餐」联动错乱。
+        CharacterState.PREP -> meals.firstOrNull { it.status == MealStatus.PREPARING }?.let {
             SpeechCatalog.text(MealPhase.PREP, it.type)
         } ?: "备餐时间！做起来"
 
-        CharacterState.EATING -> meals.lastOrNull()?.let {
-            SpeechCatalog.text(MealPhase.EATING, it.type)
-        } ?: "开饭啦！慢慢吃"
+        CharacterState.EATING -> meals.filter { it.status == MealStatus.EATING }
+            .maxByOrNull { it.mealTime }?.let {
+                SpeechCatalog.text(MealPhase.EATING, it.type)
+            } ?: "开饭啦！慢慢吃"
 
         CharacterState.REST -> "今天完成啦，干得漂亮！"
         CharacterState.FASTING -> "断食中，再坚持一下就开饭！"
@@ -327,6 +415,14 @@ fun HomeScreen(
                 vm.onIntent(HomeIntent.UncheckIn(it))
                 scope.launch { Fast16Widget().updateAll(context) } // 撤销 → 桌面小组件同步
             },
+            onCheckInNow = {
+                vm.onIntent(HomeIntent.CheckInNow)
+                scope.launch { Fast16Widget().updateAll(context) } // 打卡/自动生成 → 小组件同步
+            },
+            onEditPrep = { type, minutes ->
+                vm.onIntent(HomeIntent.EditPrep(type, minutes))
+                scope.launch { Fast16Widget().updateAll(context) } // 备餐变化 → 小组件同步
+            },
             onOpenRecord = onOpenRecord,
             onEditPlan = onEditPlan,
             modifier = modifier,
@@ -363,10 +459,14 @@ private fun HomeContent(
     onNewPlan: () -> Unit,
     onCheckIn: (MealType) -> Unit,
     onUncheckIn: (MealType) -> Unit,
+    onCheckInNow: () -> Unit,
+    onEditPrep: (MealType, Int) -> Unit,
     onOpenRecord: () -> Unit,
     onEditPlan: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 备餐编辑弹窗当前目标餐次（null = 未打开）
+    var editingPrep by remember { mutableStateOf<MealType?>(null) }
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
@@ -376,12 +476,19 @@ private fun HomeContent(
         modifier = Modifier
             .fillMaxSize()
             .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(scrollState)
+            .verticalScroll(
+                state = scrollState,
+                // overscrollEffect = null 关掉边缘拉伸：① 内容本就一屏可见时，滑动不再产生
+                // 「还能往下滚」的错觉，消除滚动交互负担；② 边缘拉伸属 M3 平滑动效，与像素风
+                // 阶跃规范冲突。矮屏真需要滚动时滚动本身照常工作，只是没有回弹。
+                overscrollEffect = null,
+            )
             .padding(
                 start = PixelShape.Spacing.lg,
                 end = PixelShape.Spacing.lg,
                 top = PixelShape.Spacing.lg,
-                bottom = PixelShape.Spacing.xxl,
+                // 底部与 PixelBottomBar 相邻，底栏自带 padding，此处无需再留 xxl
+                bottom = PixelShape.Spacing.lg,
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -401,9 +508,18 @@ private fun HomeContent(
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
         // 角色「小健」+ 气泡（文案同源 SpeechCatalog）
-        PixelCharacter(state = state.characterState)
-        Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
-        PixelBubble(text = state.bubbleText)
+        // 一屏可见优化：纵向堆叠（角色 60 + 间距 8 + 气泡 ~43 ≈ 111dp）改横向并排 → 60dp
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PixelCharacter(state = state.characterState)
+            PixelBubble(
+                text = state.bubbleText,
+                modifier = Modifier.weight(1f),
+            )
+        }
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
@@ -424,11 +540,11 @@ private fun HomeContent(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 PixelText(text = panelLabel, color = PixelColors.gray, fontSize = PixelType.Size.xs)
                 Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
-                // spec 2.2：断食倒计时 34px
+                // 断食倒计时（一屏可见优化：spec 2.2 的 34px 下调至 Size.lg = 28px，仍是画面最大字号）
                 PixelNumber(
                     value = panelValue,
                     color = panelColor,
-                    fontSize = 34.sp,
+                    fontSize = PixelType.Size.lg,
                 )
                 Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
                 PixelProgressBar(
@@ -441,19 +557,43 @@ private fun HomeContent(
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
-        // 分区标题（UI 拥挤优化：信息层级 + 留白）
-        PixelSectionTitle(text = "今日三餐")
+        // 分区标题（信息层级 + 留白）；一屏可见优化：进度小字与编辑入口并入标题行右侧，
+        // 省下「小字 14 + 上间距 8」与「全宽按钮 38 + 上间距 12」共 ~72dp
+        PixelSectionTitle(
+            text = "今日三餐",
+            trailing = if (state.hasPlanToday) {
+                {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.sm),
+                    ) {
+                        PixelText(
+                            text = "已打卡 ${state.meals.count { it.checkedIn }}/${state.meals.size}",
+                            color = PixelColors.gray,
+                            fontSize = PixelType.Size.xs,
+                        )
+                        // 今日计划编辑入口（复用 Create 编辑模式）
+                        Box(
+                            modifier = Modifier
+                                .clickable(onClick = { onEditPlan(state.planId) })
+                                .padding(all = PixelShape.Spacing.xs),
+                        ) {
+                            PixelText(
+                                text = "编辑 ›",
+                                color = PixelColors.blue,
+                                fontSize = PixelType.Size.xs,
+                            )
+                        }
+                    }
+                }
+            } else {
+                null
+            },
+        )
         Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
 
         // 三餐时间轴（原型 meal-row ×3）或空态
         if (state.hasPlanToday) {
-            // P2：今日打卡进度小字
-            PixelText(
-                text = "已打卡 ${state.meals.count { it.checkedIn }}/${state.meals.size}",
-                color = PixelColors.gray,
-                fontSize = PixelType.Size.xs,
-            )
-            Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
             state.meals.forEach { meal ->
                 PixelMealRow(
                     name = meal.name,
@@ -465,38 +605,123 @@ private fun HomeContent(
                     onCheckIn = {
                         if (meal.checkedIn) onUncheckIn(meal.type) else onCheckIn(meal.type)
                     },
-                    modifier = Modifier.padding(vertical = PixelShape.Spacing.sm),
+                    // 备餐可点编辑（弹 PixelDialog stepper；prepMinutes 是 per-meal 字段，非全局写死）
+                    onEditPrep = { editingPrep = meal.type },
+                    modifier = Modifier.padding(vertical = PixelShape.Spacing.xs),
                 )
             }
-
-            // 今日计划编辑入口（复用 Create 编辑模式）
-            Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-            PixelButton(
-                text = "编辑计划",
-                onClick = { onEditPlan(state.planId) },
-                primary = false,
-                modifier = Modifier.fillMaxWidth(),
-            )
         } else {
+            val detected = state.detectedMealType
+            // 当前时段餐是否已打卡：已打 → 按钮禁用并显示「已记录」，避免重复礼花
+            val alreadyChecked = detected != null && detected in state.checkedInToday
             PixelCard(backgroundColor = PixelColors.panel.copy(alpha = 0.4f)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    PixelText(text = "今天还没有就餐计划", color = PixelColors.gray, fontSize = PixelType.Size.xs)
-                    Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
-                    PixelText(text = "记录早餐时间，自动安排午/晚", color = PixelColors.gray, fontSize = PixelType.Size.xs)
+                    if (state.checkedInToday.isEmpty()) {
+                        PixelText(text = "今天还没有就餐计划", color = PixelColors.gray, fontSize = PixelType.Size.xs)
+                        Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                        // 按时段判定当前餐次：用户不选餐次，系统按本地时间推断（MealWindow）
+                        PixelText(
+                            text = when (detected) {
+                                MealType.BREAKFAST -> "当前是早餐时段 · 打卡自动安排午/晚"
+                                MealType.LUNCH -> "当前是午餐时段 · 将只记录这一餐"
+                                MealType.DINNER -> "当前是晚餐时段 · 将只记录这一餐"
+                                null -> "现在不是用餐时段"
+                            },
+                            color = PixelColors.gray,
+                            fontSize = PixelType.Size.xs,
+                        )
+                    } else {
+                        // 单餐打卡反馈：无计划但今日已记录，展示已记录餐次（打卡结果可见）
+                        PixelText(text = "今天还没有就餐计划", color = PixelColors.gray, fontSize = PixelType.Size.xs)
+                        Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                        PixelText(
+                            text = "今日已记录：" + MealType.entries
+                                .filter { it in state.checkedInToday }
+                                .joinToString(" ") { SpeechCatalog.mealName(it) } + " ✓",
+                            color = PixelColors.yellow,
+                            fontSize = PixelType.Size.xs,
+                        )
+                        if (detected != null && !alreadyChecked) {
+                            Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                            PixelText(
+                                text = "还可记录 ${SpeechCatalog.mealName(detected)}",
+                                color = PixelColors.gray,
+                                fontSize = PixelType.Size.xs,
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-                    PixelButton(text = "＋ 新建计划", onClick = onNewPlan, primary = true)
+                    PixelButton(
+                        text = when {
+                            alreadyChecked -> "${SpeechCatalog.mealName(detected)}已记录 ✓"
+                            detected == MealType.BREAKFAST -> "打卡早餐 · 自动安排午/晚"
+                            detected == MealType.LUNCH -> "打卡午餐"
+                            detected == MealType.DINNER -> "打卡晚餐"
+                            else -> "现在不是用餐时段"
+                        },
+                        onClick = onCheckInNow,
+                        primary = true,
+                        enabled = !alreadyChecked && detected != null,
+                    )
+                    Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                    PixelButton(
+                        text = "＋ 预约未来计划",
+                        onClick = onNewPlan,
+                        primary = false,
+                    )
                 }
             }
         }
     }
-    // 像素滚动条：矮屏内容被裁时提示可滚动（右上端、贯穿高度）
-    PixelVerticalScrollbar(
-        scrollState = scrollState,
-        modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .fillMaxHeight()
-            .padding(vertical = PixelShape.Spacing.sm),
-    )
+    // 像素滚动条：仅在内容真的溢出时出现（一屏可见优化后典型态不溢出 → 不再画无意义的空轨道）
+    if (scrollState.maxValue > 0) {
+        PixelVerticalScrollbar(
+            scrollState = scrollState,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .padding(vertical = PixelShape.Spacing.sm),
+        )
+    }
+    }
+
+    // 备餐编辑弹窗：tile 上备餐文字可点 → 打开；±5 分钟（0–180），保存后重排闹钟
+    editingPrep?.let { type ->
+        val meal = state.meals.firstOrNull { it.type == type }
+            ?: run { editingPrep = null; return@let }
+        PixelDialog(
+            onDismiss = { editingPrep = null },
+            title = "${meal.name} · 备餐",
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                PixelText(
+                    text = if (meal.prepMinutes > 0) {
+                        "到点前 ${meal.prepMinutes} 分钟提醒备餐"
+                    } else {
+                        "无备餐 · 到点直接开吃"
+                    },
+                    color = PixelColors.gray,
+                    fontSize = PixelType.Size.xs,
+                )
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+                PixelStepper(
+                    value = "${meal.prepMinutes}",
+                    onDecrease = {
+                        if (meal.prepMinutes > 0) {
+                            onEditPrep(type, (meal.prepMinutes - 5).coerceAtLeast(0))
+                        }
+                    },
+                    onIncrease = { onEditPrep(type, (meal.prepMinutes + 5).coerceAtMost(180)) },
+                )
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+                PixelButton(
+                    text = "完成",
+                    onClick = { editingPrep = null },
+                    primary = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
     }
 }
 
@@ -533,28 +758,149 @@ private fun formatFastingHMS(seconds: Long?): String {
     return "%02d:%02d:%02d".format(total / 3600, total % 3600 / 60, total % 60)
 }
 
+/** Preview 假数据（有计划的典型态） */
+private fun previewContentState() = HomeUiState.Content(
+    hasPlanToday = true,
+    characterState = CharacterState.FASTING,
+    bubbleText = "断食中，再坚持一下就开饭！",
+    fastingSeconds = 3 * 3600 + 20 * 60 + 12,
+    meals = listOf(
+        MealUi(MealType.BREAKFAST, "早餐", "08:00", prepMinutes = 0, checkedIn = true, hasMeal = true),
+        MealUi(MealType.LUNCH, "午餐", "12:07", prepMinutes = 30, checkedIn = false, hasMeal = true),
+        MealUi(MealType.DINNER, "晚餐", "15:30", prepMinutes = 45, checkedIn = false, hasMeal = true),
+    ),
+    subtitle = "今天 · 早餐 08:00 ｜ 窗口结束 16:00",
+    streak = 12,
+    windowProgress = 0.625f,
+)
+
 @PreviewPixel
 @Composable
 private fun HomeScreenPreview() {
     PixelTheme {
         HomeContent(
-            state = HomeUiState.Content(
-                hasPlanToday = true,
-                characterState = CharacterState.FASTING,
-                bubbleText = "断食中，再坚持一下就开饭！",
-                fastingSeconds = 3 * 3600 + 20 * 60 + 12,
-                meals = listOf(
-                    MealUi(MealType.BREAKFAST, "早餐", "08:00", prepMinutes = 0, checkedIn = true, hasMeal = true),
-                    MealUi(MealType.LUNCH, "午餐", "12:07", prepMinutes = 30, checkedIn = false, hasMeal = true),
-                    MealUi(MealType.DINNER, "晚餐", "15:30", prepMinutes = 45, checkedIn = false, hasMeal = true),
-                ),
-                subtitle = "今天 · 早餐 08:00 ｜ 窗口结束 16:00",
-                streak = 12,
-                windowProgress = 0.625f,
-            ),
+            state = previewContentState(),
             onNewPlan = {},
             onCheckIn = {},
             onUncheckIn = {},
+            onCheckInNow = {},
+            onEditPrep = { _, _ -> },
+            onOpenRecord = {},
+            onEditPlan = {},
+        )
+    }
+}
+
+/**
+ * 一屏可见验证用 Preview 框架：复刻 Fast16NavHost 的 Scaffold 结构，
+ * 让可视高度与真机一致（扣掉底栏），用来目视确认内容是否一屏放下。
+ * 由带不同 device spec 的 @Preview 入口调用（Android Studio 按注解渲染各尺寸）。
+ */
+@Composable
+private fun HomeContentFramePreview() {
+    PixelTheme {
+        Scaffold(
+            containerColor = PixelColors.bg,
+            bottomBar = { Box(modifier = Modifier.height(62.dp)) },
+        ) { innerPadding ->
+            HomeContent(
+                state = previewContentState(),
+                onNewPlan = {},
+                onCheckIn = {},
+                onUncheckIn = {},
+                onCheckInNow = {},
+                onEditPrep = { _, _ -> },
+                onOpenRecord = {},
+                onEditPlan = {},
+                modifier = Modifier.padding(innerPadding),
+            )
+        }
+    }
+}
+
+/** 主流屏：360×800dp（可视 ≈662dp），目标是一屏放下、无滚动 */
+@Preview(
+    name = "Home · 主流屏 360x800",
+    device = "spec:width=360dp,height=800dp,dpi=480",
+    showSystemUi = true,
+    showBackground = true,
+    backgroundColor = 0xFF0F0F1A,
+)
+@Composable
+private fun HomeScreenMainstreamPreview() {
+    HomeContentFramePreview()
+}
+
+/** 矮屏：360×640dp（可视 ≈506dp），目标是不裁切、可滚动阅读 */
+@Preview(
+    name = "Home · 矮屏 360x640",
+    device = "spec:width=360dp,height=640dp,dpi=480",
+    showSystemUi = true,
+    showBackground = true,
+    backgroundColor = 0xFF0F0F1A,
+)
+@Composable
+private fun HomeScreenSmallDevicePreview() {
+    HomeContentFramePreview()
+}
+
+/** 无计划空态假数据（detected 可指定当前时段；checked = 今日已打卡餐次） */
+private fun emptyPreviewState(detected: MealType?, checked: Set<MealType>) = HomeUiState.Content(
+    hasPlanToday = false,
+    characterState = CharacterState.IDLE,
+    bubbleText = "来记录早餐，开启今天第一餐吧！",
+    fastingSeconds = null,
+    meals = emptyList(),
+    subtitle = "今天 · 还没有计划",
+    streak = 0,
+    windowProgress = 0f,
+    planId = -1L,
+    detectedMealType = detected,
+    checkedInToday = checked,
+)
+
+/** 空态 · 未打卡：显示时段引导 + 可点打卡按钮 */
+@Preview(
+    name = "Home · 空态未打卡",
+    device = "spec:width=360dp,height=800dp,dpi=480",
+    showSystemUi = true,
+    showBackground = true,
+    backgroundColor = 0xFF0F0F1A,
+)
+@Composable
+private fun HomeEmptyPreview() {
+    PixelTheme {
+        HomeContent(
+            state = emptyPreviewState(detected = MealType.DINNER, checked = emptySet()),
+            onNewPlan = {},
+            onCheckIn = {},
+            onUncheckIn = {},
+            onCheckInNow = {},
+            onEditPrep = { _, _ -> },
+            onOpenRecord = {},
+            onEditPlan = {},
+        )
+    }
+}
+
+/** 空态 · 已打卡：显示「今日已记录」反馈 + 按钮禁用（打卡结果可见） */
+@Preview(
+    name = "Home · 空态已打卡",
+    device = "spec:width=360dp,height=800dp,dpi=480",
+    showSystemUi = true,
+    showBackground = true,
+    backgroundColor = 0xFF0F0F1A,
+)
+@Composable
+private fun HomeEmptyCheckedPreview() {
+    PixelTheme {
+        HomeContent(
+            state = emptyPreviewState(detected = MealType.DINNER, checked = setOf(MealType.DINNER)),
+            onNewPlan = {},
+            onCheckIn = {},
+            onUncheckIn = {},
+            onCheckInNow = {},
+            onEditPrep = { _, _ -> },
             onOpenRecord = {},
             onEditPlan = {},
         )

@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.ly.fast16.core.designsystem.token.PixelMotion
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 精灵帧循环（基建 §2.4 M1 / 设计方案 §8.5）：
@@ -32,7 +33,7 @@ fun PixelFrameAnimation(
     var index by remember { mutableIntStateOf(0) }
     LaunchedEffect(frames.size) {
         while (true) {
-            delay(frameMs)
+            delay(frameMs.milliseconds)
             index = (index + 1) % frames.size
         }
     }

@@ -27,6 +27,9 @@ interface PlanRepository {
     /** 更新单餐状态（reconcile / 打卡联动置 COMPLETED） */
     suspend fun updateMealStatus(mealId: Long, status: MealStatus)
 
+    /** 更新单餐备餐时长（prepTime 派生变化 → 调用方须重排该计划闹钟） */
+    suspend fun updateMealPrep(mealId: Long, prepMinutes: Int)
+
     /** 按 id 取单餐（闹钟触发 / 通知打卡解析用） */
     suspend fun getMealById(id: Long): Meal?
 

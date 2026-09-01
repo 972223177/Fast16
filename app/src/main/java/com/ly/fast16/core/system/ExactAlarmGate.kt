@@ -6,14 +6,13 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.annotation.RequiresApi
 
 /**
  * 精确闹钟权限门（compat-api24-37 §0/§5 红线，版本差异收口 core/system）。
  *
  * - API 31+ 才有精确闹钟权限概念：`canScheduleExactAlarms()` 检查；
  *   <31 视为已授权（无该权限体系）。
- * - API 14（Android 14）起对新装应用 `SCHEDULE_EXACT_ALARM` **默认拒绝**，
+ * - API 34（Android 14）起对新装应用 `SCHEDULE_EXACT_ALARM` **默认拒绝**，
  *   需引导用户到系统设置授权（[grantIntent]），未授权走 setInexactRepeating 降级。
  *
  * feature 层只依赖本类，禁止裸 `Build.VERSION` / `@SuppressLint("NewApi")`。

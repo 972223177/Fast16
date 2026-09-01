@@ -1,11 +1,11 @@
 package com.ly.fast16.domain.usecase
 
+import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.time.Time
 import com.ly.fast16.domain.model.Meal
 import com.ly.fast16.domain.model.MealPlan
 import com.ly.fast16.domain.model.MealStatus
 import com.ly.fast16.domain.model.MealType
-import com.ly.fast16.domain.model.PlanStatus
 import com.ly.fast16.domain.model.ReminderMode
 import com.ly.fast16.domain.repository.CheckInRepository
 import com.ly.fast16.domain.repository.PlanRepository
@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
@@ -30,15 +31,24 @@ class CheckInUseCaseTest {
     private class FakeCheckInRepository : CheckInRepository {
         val checked = mutableListOf<Pair<LocalDate, MealType>>()
 
-        override fun watchMonth(month: YearMonth): Flow<Map<LocalDate, Set<MealType>>> = flowOf(emptyMap())
-        override fun watchCompletedDays(from: LocalDate, to: LocalDate): Flow<Set<LocalDate>> = flowOf(emptySet())
-        override fun watchRange(from: LocalDate, to: LocalDate): Flow<Map<LocalDate, Set<MealType>>> = flowOf(emptyMap())
+        override fun watchMonth(month: YearMonth): Flow<Map<LocalDate, Set<MealType>>> =
+            flowOf(emptyMap())
+
+        override fun watchCompletedDays(from: LocalDate, to: LocalDate): Flow<Set<LocalDate>> =
+            flowOf(emptySet())
+
+        override fun watchRange(
+            from: LocalDate,
+            to: LocalDate
+        ): Flow<Map<LocalDate, Set<MealType>>> = flowOf(emptyMap())
+
         override suspend fun checkIn(date: LocalDate, mealType: MealType, at: Instant) {
             checked += date to mealType
         }
 
         override suspend fun uncheckIn(date: LocalDate, mealType: MealType) {}
-        override suspend fun completedDays(from: LocalDate, to: LocalDate): Set<LocalDate> = emptySet()
+        override suspend fun completedDays(from: LocalDate, to: LocalDate): Set<LocalDate> =
+            emptySet()
     }
 
     private class FakePlanRepository(
@@ -46,7 +56,9 @@ class CheckInUseCaseTest {
     ) : PlanRepository {
         val updated = mutableListOf<Pair<Long, MealStatus>>()
 
-        override fun watchPlanByDate(date: LocalDate): Flow<Pair<MealPlan, List<Meal>>?> = flowOf(null)
+        override fun watchPlanByDate(date: LocalDate): Flow<Pair<MealPlan, List<Meal>>?> =
+            flowOf(null)
+
         override fun watchMealsByDate(date: LocalDate): Flow<List<Meal>> = flowOf(meals)
         override suspend fun savePlan(plan: MealPlan, meals: List<Meal>): Long = 1L
         override suspend fun deletePlan(planId: Long) {}
@@ -54,9 +66,12 @@ class CheckInUseCaseTest {
             updated += mealId to status
         }
 
+        override suspend fun updateMealPrep(mealId: Long, prepMinutes: Int) {}
+
         override suspend fun getMealById(id: Long): Meal? = meals.firstOrNull { it.id == id }
         override suspend fun getPlanById(planId: Long): Pair<MealPlan, List<Meal>>? = null
-        override suspend fun getActivePlansFrom(date: LocalDate): List<Pair<MealPlan, List<Meal>>> = emptyList()
+        override suspend fun getActivePlansFrom(date: LocalDate): List<Pair<MealPlan, List<Meal>>> =
+            emptyList()
     }
 
     private fun meal(id: Long, type: MealType) = Meal(
@@ -86,6 +101,36 @@ class CheckInUseCaseTest {
         useCase.checkIn(date, MealType.LUNCH, at)
 
         assertEquals(listOf(lunch.id to MealStatus.COMPLETED), planRepo.updated)
+    }
+
+    @Test
+    fun checkIn_futureDate_rejected() = runTest {
+        // 回归：未来日期禁止预打卡——补打卡 = 补「已发生」的漏记；
+        // 未来打卡会污染 streak/完成率/日历三点统计。领域层兜底必须拒绝。
+        val checkInRepo = FakeCheckInRepository()
+        val planRepo = FakePlanRepository(meals = emptyList())
+        val useCase = DefaultCheckInUseCase(checkInRepo, planRepo)
+        val future = SystemTimeProvider.today().plusDays(1)
+
+        var thrown: IllegalArgumentException? = null
+        try {
+            useCase.checkIn(future, MealType.BREAKFAST, at)
+        } catch (e: IllegalArgumentException) {
+            thrown = e
+        }
+
+        assertNotNull("未来日期打卡应抛 IllegalArgumentException", thrown)
+        assertTrue("未来日期不应写入打卡记录", checkInRepo.checked.isEmpty())
+    }
+
+    @Test
+    fun checkIn_today_allowed() = runTest {
+        val checkInRepo = FakeCheckInRepository()
+        val useCase = DefaultCheckInUseCase(checkInRepo, FakePlanRepository())
+
+        useCase.checkIn(SystemTimeProvider.today(), MealType.BREAKFAST, at)
+
+        assertEquals(listOf(SystemTimeProvider.today() to MealType.BREAKFAST), checkInRepo.checked)
     }
 
     @Test

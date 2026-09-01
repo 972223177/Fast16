@@ -41,6 +41,7 @@ class AlarmPlanSchedulerRescheduleTest {
         override suspend fun savePlan(plan: MealPlan, meals: List<Meal>): Long = plan.id
         override suspend fun deletePlan(planId: Long) {}
         override suspend fun updateMealStatus(mealId: Long, status: MealStatus) {}
+        override suspend fun updateMealPrep(mealId: Long, prepMinutes: Int) {}
         override suspend fun getMealById(id: Long): Meal? =
             plans.flatMap { it.second }.firstOrNull { it.id == id }
         override suspend fun getPlanById(planId: Long): Pair<MealPlan, List<Meal>>? =
@@ -88,7 +89,7 @@ class AlarmPlanSchedulerRescheduleTest {
         val alarmManager =
             RuntimeEnvironment.getApplication().getSystemService(AlarmManager::class.java)
         // 2 计划 × 5 闹钟（早1+午2+晚2）
-        assertEquals(10, shadowOf(alarmManager).getScheduledAlarms().size)
+        assertEquals(10, shadowOf(alarmManager).scheduledAlarms.size)
     }
 
     @Test
@@ -103,7 +104,7 @@ class AlarmPlanSchedulerRescheduleTest {
 
         val alarmManager =
             RuntimeEnvironment.getApplication().getSystemService(AlarmManager::class.java)
-        assertEquals(0, shadowOf(alarmManager).getScheduledAlarms().size)
+        assertEquals(0, shadowOf(alarmManager).scheduledAlarms.size)
     }
 
     @Test
@@ -120,6 +121,6 @@ class AlarmPlanSchedulerRescheduleTest {
 
         val alarmManager =
             RuntimeEnvironment.getApplication().getSystemService(AlarmManager::class.java)
-        assertEquals(0, shadowOf(alarmManager).getScheduledAlarms().size)
+        assertEquals(0, shadowOf(alarmManager).scheduledAlarms.size)
     }
 }

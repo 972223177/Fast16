@@ -66,6 +66,10 @@ interface MealDao {
     @Query("UPDATE meals SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: Long, status: Int)
 
+    /** 更新备餐时长（prep_time 为派生字段，不落库；tile 内备餐编辑用） */
+    @Query("UPDATE meals SET prep_minutes = :prepMinutes WHERE id = :id")
+    suspend fun updatePrep(id: Long, prepMinutes: Int)
+
     /** 按 id 取单餐（闹钟触发 / 通知打卡解析用） */
     @Query("SELECT * FROM meals WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): MealEntity?

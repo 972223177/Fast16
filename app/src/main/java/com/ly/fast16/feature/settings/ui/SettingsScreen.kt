@@ -55,6 +55,7 @@ import com.ly.fast16.core.designsystem.token.PixelType
 import com.ly.fast16.core.system.ExactAlarmGate
 import com.ly.fast16.core.system.NotificationPermission
 import com.ly.fast16.data.local.AppSettings
+import com.ly.fast16.data.local.FontMode
 import com.ly.fast16.data.local.SettingsStore
 import com.ly.fast16.domain.model.ReminderMode
 import com.ly.fast16.feature.onboarding.ui.OnboardingDialog
@@ -81,6 +82,9 @@ sealed interface SettingsIntent {
     data class SetPrepBreakfast(val minutes: Int) : SettingsIntent
     data class SetPrepLunch(val minutes: Int) : SettingsIntent
     data class SetPrepDinner(val minutes: Int) : SettingsIntent
+
+    /** 切换字体模式（像素风 / 系统默认；写 SettingsStore，PixelTheme 实时响应） */
+    data class SetFontMode(val mode: FontMode) : SettingsIntent
 }
 
 // ---------- State ----------
@@ -103,6 +107,8 @@ sealed interface SettingsUiState {
         val exactAlarmEnabled: Boolean = true,
         /** 精确闹钟授权引导 Intent（canScheduleExact 时 null） */
         val exactAlarmGrantIntent: Intent? = null,
+        /** 字体模式（像素风 / 系统默认；默认系统） */
+        val fontMode: FontMode = FontMode.SYSTEM,
     ) : SettingsUiState
 }
 
@@ -120,6 +126,7 @@ object SettingsReducer {
             is SettingsIntent.SetPrepBreakfast,
             is SettingsIntent.SetPrepLunch,
             is SettingsIntent.SetPrepDinner,
+            is SettingsIntent.SetFontMode,
             -> state
         }
 }
@@ -161,6 +168,7 @@ class SettingsViewModel(
         notificationGranted = notificationPermission.isGranted,
         exactAlarmEnabled = exactAlarmGate.canScheduleExact,
         exactAlarmGrantIntent = exactAlarmGate.grantIntent(),
+        fontMode = s.fontMode,
     )
 
     fun onIntent(intent: SettingsIntent) {
@@ -174,6 +182,7 @@ class SettingsViewModel(
                 is SettingsIntent.SetPrepBreakfast -> settingsStore.setDefaultPrepBreakfastMinutes(intent.minutes)
                 is SettingsIntent.SetPrepLunch -> settingsStore.setDefaultPrepLunchMinutes(intent.minutes)
                 is SettingsIntent.SetPrepDinner -> settingsStore.setDefaultPrepDinnerMinutes(intent.minutes)
+                is SettingsIntent.SetFontMode -> settingsStore.setFontMode(intent.mode)
                 SettingsIntent.ShowOnboarding -> Unit
             }
         }
@@ -222,6 +231,7 @@ fun SettingsScreen(
             },
             onSetReminderMode = { vm.onIntent(SettingsIntent.SetReminderMode(it)) },
             onSetSetting = vm::onIntent,
+            onSetFontMode = { vm.onIntent(SettingsIntent.SetFontMode(it)) },
             onRequestNotification = {
                 // 永不再询问 → 跳系统通知设置页；否则弹系统申请框
                 // （字符串字面量：POST_NOTIFICATIONS 常量 API 33+；<33 恒已授权不会走到申请）
@@ -246,10 +256,12 @@ private fun SettingsContent(
     onShowOnboarding: () -> Unit,
     onSetReminderMode: (ReminderMode) -> Unit,
     onSetSetting: (SettingsIntent) -> Unit,
+    onSetFontMode: (FontMode) -> Unit,
     onRequestNotification: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showReminderDialog by remember { mutableStateOf(false) }
+    var showFontDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<EditableSetting?>(null) }
     val context = LocalContext.current
 
@@ -289,6 +301,13 @@ private fun SettingsContent(
         SettingRow(label = "早餐默认备餐", value = "${state.defaultPrepBreakfastMinutes} 分钟", onClick = { editing = EditableSetting.PREP_BREAKFAST })
         SettingRow(label = "午餐默认备餐", value = "${state.defaultPrepLunchMinutes} 分钟", onClick = { editing = EditableSetting.PREP_LUNCH })
         SettingRow(label = "晚餐默认备餐", value = "${state.defaultPrepDinnerMinutes} 分钟", onClick = { editing = EditableSetting.PREP_DINNER })
+
+        // 字体模式（像素风 / 系统默认；默认系统，可切换像素风）
+        SettingRow(
+            label = "字体",
+            value = if (state.fontMode == FontMode.PIXEL) "像素风" else "默认",
+            onClick = { showFontDialog = true },
+        )
 
         // 分区：提醒与权限
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
@@ -395,6 +414,47 @@ private fun SettingsContent(
                     ) {
                         PixelText(
                             text = reminderLabel(mode.name),
+                            color = if (selected) PixelColors.bg else PixelColors.white,
+                            fontSize = PixelType.Size.sm,
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (selected) {
+                            PixelText(text = "●", color = PixelColors.bg, fontSize = PixelType.Size.xs)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 字体模式选择弹窗（像素风 / 系统默认；选中黄底黑字；切换实时生效——
+    // PixelTheme 订阅同一 settings 流，全 App 字体即时切换）
+    if (showFontDialog) {
+        PixelDialog(onDismiss = { showFontDialog = false }, title = "字体") {
+            Column {
+                PixelText(
+                    text = "像素风字体 / 系统默认字体：",
+                    color = PixelColors.gray,
+                    fontSize = PixelType.Size.xs,
+                )
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                FontMode.entries.forEach { mode ->
+                    val selected = mode == state.fontMode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = PixelShape.Spacing.xs)
+                            .background(if (selected) PixelColors.yellow else PixelColors.panel)
+                            .border(BorderStroke(PixelShape.borderWidth, Color.Black))
+                            .clickable {
+                                onSetFontMode(mode)
+                                showFontDialog = false
+                            }
+                            .padding(PixelShape.Spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PixelText(
+                            text = if (mode == FontMode.PIXEL) "像素风" else "默认字体",
                             color = if (selected) PixelColors.bg else PixelColors.white,
                             fontSize = PixelType.Size.sm,
                         )
@@ -554,6 +614,7 @@ private fun SettingsScreenPreview() {
             onShowOnboarding = {},
             onSetReminderMode = {},
             onSetSetting = {},
+            onSetFontMode = {},
             onRequestNotification = {},
         )
     }

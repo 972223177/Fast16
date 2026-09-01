@@ -59,6 +59,9 @@ class LocalPlanRepository(
     override suspend fun updateMealStatus(mealId: Long, status: MealStatus) =
         mealDao.updateStatus(mealId, status.value)
 
+    override suspend fun updateMealPrep(mealId: Long, prepMinutes: Int) =
+        mealDao.updatePrep(mealId, prepMinutes)
+
     override suspend fun getMealById(id: Long): Meal? =
         mealDao.getById(id)?.toDomain()
 

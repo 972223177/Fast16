@@ -19,7 +19,7 @@ import com.ly.fast16.core.designsystem.token.PixelColors
  * 进度 = floor(progress × segments)，整数格点亮。
  *
  * @param segments 总格数（断食进度常用 16）
- * @param segmentWidth / [segmentHeight] 单格尺寸（spec：9×16px，gap 3px）
+ * @param segmentWidth / [segmentHeight] 单格尺寸（一屏可见优化：由 8×16 下调至 6×12）
  * @param litColor 点亮色（进行中/成功用绿，待处理用黄）
  * @param unlitColor 未点亮色（spec .seg i：#23263a）
  */
@@ -28,15 +28,15 @@ fun PixelProgressBar(
     progress: Float,
     modifier: Modifier = Modifier,
     segments: Int = 16,
-    segmentWidth: Dp = 8.dp,
-    segmentHeight: Dp = 16.dp,
+    segmentWidth: Dp = 6.dp,
+    segmentHeight: Dp = 12.dp,
     litColor: Color = PixelColors.green,
     unlitColor: Color = Color(0xFF23263A),
 ) {
     val lit = (progress.coerceIn(0f, 1f) * segments).toInt()
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(segments) { i ->

@@ -18,7 +18,7 @@ import com.ly.fast16.core.designsystem.token.PixelType
  * 计时数字（基建 §2.4 M1 / 设计方案 §8.5）：
  * Press Start 2P 数字整秒/整分钟**跳变**（阶跃，无平滑）；用于断食剩余「分:秒」等。
  *
- * @param digits 逐位渲染（保持等宽对位，如 "12:07"），非数字字符（':'）用分隔符样式。
+ * @param value 逐位渲染的计时串（保持等宽对位，如 "12:07"），非数字字符（':'）用分隔符样式。
  */
 @Composable
 fun PixelNumber(

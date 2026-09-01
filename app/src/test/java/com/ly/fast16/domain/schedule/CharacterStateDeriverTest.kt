@@ -59,6 +59,40 @@ class CharacterStateDeriverTest {
     }
 
     @Test
+    fun allPreCheckedIn_inPrepWindow_stillRest() {
+        // 回归：提前全部打卡后，now 恰在某餐备餐窗口内——已完成的餐不得再产生 PREP，
+        // 否则「面板已完成 / 角色还在备餐 / 气泡还在喊备餐」三者联动错乱
+        val meals = listOf(
+            meal(MealType.BREAKFAST, 8, 0, MealStatus.COMPLETED),
+            meal(MealType.LUNCH, 12, 30, MealStatus.COMPLETED),  // 备餐窗口 11:30–12:00
+            meal(MealType.DINNER, 15, 0, MealStatus.COMPLETED),
+        )
+        assertEquals(CharacterState.REST, CharacterStateDeriver.derive(at(11, 45), plan, meals))
+    }
+
+    @Test
+    fun preCheckedInMealInOwnPrepWindow_noPrepState() {
+        // 单餐已预打卡完成、now 在其备餐窗口内 → 全完成 → REST（不出现 PREP）
+        val meals = listOf(
+            meal(MealType.LUNCH, 12, 30, MealStatus.COMPLETED),
+        )
+        assertEquals(CharacterState.REST, CharacterStateDeriver.derive(at(11, 45), plan, meals))
+    }
+
+    @Test
+    fun laterMealPending_preCheckedMealPrepWindow_skipsToLaterPrep() {
+        // 早餐完成、午餐预打卡完成（其备餐窗口 11:30–12:00 不产生 PREP）、晚餐未完成：
+        // 晚餐备餐前 → FASTING；到晚餐备餐窗口 → PREP（未完成餐正常进入备餐）
+        val meals = listOf(
+            meal(MealType.BREAKFAST, 8, 0, MealStatus.COMPLETED),
+            meal(MealType.LUNCH, 12, 30, MealStatus.COMPLETED),
+            meal(MealType.DINNER, 15, 45, MealStatus.SCHEDULED),  // 备餐窗口 14:15–15:00
+        )
+        assertEquals(CharacterState.FASTING, CharacterStateDeriver.derive(at(11, 45), plan, meals))
+        assertEquals(CharacterState.PREP, CharacterStateDeriver.derive(at(14, 15), plan, meals))
+    }
+
+    @Test
     fun betweenMealsOrOutsideWindow_fasting() {
         // 早餐已完成，还没到午餐备餐
         val meals = listOf(

@@ -63,7 +63,6 @@ import com.ly.fast16.domain.repository.PlanRepository
 import com.ly.fast16.domain.schedule.Candidate
 import com.ly.fast16.domain.schedule.CandidateGenerator
 import com.ly.fast16.domain.schedule.PlanValidator
-import com.ly.fast16.domain.usecase.CheckInUseCase
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,12 +82,13 @@ import java.time.ZoneId
 
 // ---------- Intent ----------
 
-/** 新建计划用户意图（记录早餐→选方案→微调→生成） */
+/** 新建计划用户意图（记录早餐→选方案→微调→生成；日期 = 预约未来计划） */
 sealed interface CreateIntent {
     data object NextStep : CreateIntent
     data object PrevStep : CreateIntent
+    /** 计划日期 ±1 天（新建模式不可早于今天；编辑模式保持原日期） */
+    data class ShiftDate(val delta: Int) : CreateIntent
     data class PickBreakfast(val time: LocalTime) : CreateIntent
-    data object ToggleAutoCheckIn : CreateIntent
     data class SelectCandidate(val index: Int) : CreateIntent
     data class AdjustLunchTime(val time: LocalTime) : CreateIntent
     data class AdjustDinnerTime(val time: LocalTime) : CreateIntent
@@ -107,10 +107,10 @@ sealed interface CreateUiState {
         val step: Int = 1,
         /** 编辑模式（CreateRoute.planId ≥ 0）：标题切 EDIT PLAN，生成走更新+重排 */
         val isEdit: Boolean = false,
-        val today: LocalDate,
+        /** 计划日期（新建=今天或未来「预约」；编辑=原计划日期） */
+        val date: LocalDate,
         val zone: ZoneId,
         val breakfastTime: LocalTime,
-        val autoCheckIn: Boolean = true,
         // Settings 快照（候选生成参数 / 生成时继承 reminderMode）
         val windowHours: Int,
         val minGapMinutes: Int,
@@ -144,15 +144,33 @@ sealed interface CreateEvent {
 
 object CreateReducer {
 
+    /**
+     * 早餐时间合理范围 [04:00, 14:00]（8:16 常规窗口）。
+     *
+     * **跨午夜红线**：早餐过晚会生成跨午夜的候选（如 20:00 早餐 → 午餐次日 00:00），
+     * 而候选经 [syncFromCandidate] 转 LocalTime 后会被 [revalidate] 按原 date 组装回当天，
+     * 校验必然失败（午餐 < 早餐+minGap）→ 生成按钮禁用，流程走不通。
+     * 在合理范围内候选永不跨午夜（14:00 早餐 → 最晚晚餐 21:30，当天内）。
+     */
+    val BREAKFAST_MIN: LocalTime = LocalTime.of(4, 0)
+    val BREAKFAST_MAX: LocalTime = LocalTime.of(14, 0)
+
+    /** 超范围时回退的合理默认早餐 */
+    val DEFAULT_BREAKFAST: LocalTime = LocalTime.of(8, 0)
+
+    /** 默认早餐：当前时间在合理范围用当前时间，否则 08:00（晚上进 Create 不默认 20:00） */
+    fun defaultBreakfast(now: LocalTime): LocalTime =
+        if (now in BREAKFAST_MIN..BREAKFAST_MAX) now else DEFAULT_BREAKFAST
+
     fun initial(
         settings: AppSettings,
-        today: LocalDate,
+        date: LocalDate,
         zone: ZoneId,
         defaultBreakfast: LocalTime,
         isEdit: Boolean = false,
     ): CreateUiState.Content = CreateUiState.Content(
         isEdit = isEdit,
-        today = today,
+        date = date,
         zone = zone,
         breakfastTime = defaultBreakfast,
         windowHours = settings.windowHours,
@@ -178,7 +196,7 @@ object CreateReducer {
     ): CreateUiState.Content {
         val base = initial(
             settings = settings,
-            today = plan.date,
+            date = plan.date,
             zone = zone,
             defaultBreakfast = Time.timeOf(plan.windowStart, zone),
             isEdit = true,
@@ -200,8 +218,6 @@ object CreateReducer {
             // WR-05：编辑继承原餐次提醒模式（不被全局默认覆盖）
             lunchReminderMode = lunch?.reminderMode ?: base.lunchReminderMode,
             dinnerReminderMode = dinner?.reminderMode ?: base.dinnerReminderMode,
-            // 编辑不自动打卡（已有计划的打卡状态独立保留）
-            autoCheckIn = false,
         ).revalidate()
     }
 
@@ -210,8 +226,18 @@ object CreateReducer {
         return when (intent) {
             CreateIntent.NextStep -> s.copy(step = 2)
             CreateIntent.PrevStep -> s.copy(step = 1)
-            is CreateIntent.PickBreakfast -> s.copy(breakfastTime = intent.time).regen()
-            CreateIntent.ToggleAutoCheckIn -> s.copy(autoCheckIn = !s.autoCheckIn)
+            // 日期 ±1 天：新建模式不可早于今天（预约未来）；编辑模式不限制（保持原日期）
+            is CreateIntent.ShiftDate -> {
+                val newDate = s.date.plusDays(intent.delta.toLong())
+                if (!s.isEdit && newDate.isBefore(SystemTimeProvider.today())) {
+                    s // 不允许选过去日期
+                } else {
+                    s.copy(date = newDate).regen()
+                }
+            }
+            // 早餐 clamp 到合理范围（UI stepper 已限，reducer 双保险防跨午夜候选）
+            is CreateIntent.PickBreakfast ->
+                s.copy(breakfastTime = intent.time.coerceIn(BREAKFAST_MIN, BREAKFAST_MAX)).regen()
             is CreateIntent.SelectCandidate -> s.copy(selectedIndex = intent.index).syncFromCandidate()
             is CreateIntent.AdjustLunchTime -> s.copy(lunchTime = intent.time).revalidate()
             is CreateIntent.AdjustDinnerTime -> s.copy(dinnerTime = intent.time).revalidate()
@@ -221,9 +247,9 @@ object CreateReducer {
         }
     }
 
-    /** 早餐变化 → 重新生成 3 套候选并同步选中项 */
+    /** 早餐变化 / 日期变化 → 重新生成 3 套候选并同步选中项 */
     private fun CreateUiState.Content.regen(): CreateUiState.Content {
-        val breakfast = Time.at(today, breakfastTime, zone)
+        val breakfast = Time.at(date, breakfastTime, zone)
         val candidates = CandidateGenerator.generateCandidates(
             breakfast = breakfast,
             window = Duration.ofHours(windowHours.toLong()),
@@ -248,9 +274,9 @@ object CreateReducer {
 
     /** 微调 → 实时约束校验（PlanValidator） */
     private fun CreateUiState.Content.revalidate(): CreateUiState.Content {
-        val breakfast = Time.at(today, breakfastTime, zone)
-        val lunch = Time.at(today, lunchTime, zone)
-        val dinner = Time.at(today, dinnerTime, zone)
+        val breakfast = Time.at(date, breakfastTime, zone)
+        val lunch = Time.at(date, lunchTime, zone)
+        val dinner = Time.at(date, dinnerTime, zone)
         return copy(
             errors = PlanValidator.validate(
                 lunch = lunch,
@@ -270,7 +296,6 @@ object CreateReducer {
 class CreateViewModel(
     private val settingsStore: SettingsStore,
     private val planRepository: PlanRepository,
-    private val checkInUseCase: CheckInUseCase,
     private val scheduler: PlanScheduler,
     private val clock: Clock,
 ) : ViewModel() {
@@ -313,12 +338,15 @@ class CreateViewModel(
                     // 计划已不存在（被删）→ 退回新建态
                     editingPlanId = -1L
                 }
-                val breakfast = Time.alignToMinute(clock.instant()).atZone(zone).toLocalTime()
+                // 新建模式 = 「预约未来计划」：默认日期取明天（而非今天——今天的计划由
+                // Home 早餐打卡自动生成，Create 专职预约）。想预约今天可 ◀ 回退到今天
+                // （今天 ≥ 今天 允许；昨天不可）。
+                val now = Time.alignToMinute(clock.instant()).atZone(zone).toLocalTime()
                 _uiState.value = CreateReducer.initial(
                     settings = settings,
-                    today = SystemTimeProvider.today(),
+                    date = SystemTimeProvider.today().plusDays(1),
                     zone = zone,
-                    defaultBreakfast = breakfast,
+                    defaultBreakfast = CreateReducer.defaultBreakfast(now),
                 )
             }
         }
@@ -336,35 +364,33 @@ class CreateViewModel(
         if (s.errors.isNotEmpty()) return // 约束违规阻止生成
         try {
             val zone = s.zone
-            val breakfast = Time.at(s.today, s.breakfastTime, zone)
+            val breakfast = Time.at(s.date, s.breakfastTime, zone)
             val window = Duration.ofHours(s.windowHours.toLong())
             val plan = MealPlan(
                 // 编辑模式带原 id → savePlan upsert 更新原计划（date 不变，重新生成三餐）
                 id = editingPlanId,
-                date = s.today,
+                date = s.date,
                 windowStart = breakfast,
                 windowEnd = breakfast.plus(window),
                 status = PlanStatus.ACTIVE,
             )
             val meals = listOf(
                 Meal(type = MealType.BREAKFAST, mealTime = breakfast, prepMinutes = 0, reminderMode = s.defaultReminderMode),
-                Meal(type = MealType.LUNCH, mealTime = Time.at(s.today, s.lunchTime, zone), prepMinutes = s.prepLunch, reminderMode = s.lunchReminderMode),
-                Meal(type = MealType.DINNER, mealTime = Time.at(s.today, s.dinnerTime, zone), prepMinutes = s.prepDinner, reminderMode = s.dinnerReminderMode),
+                Meal(type = MealType.LUNCH, mealTime = Time.at(s.date, s.lunchTime, zone), prepMinutes = s.prepLunch, reminderMode = s.lunchReminderMode),
+                Meal(type = MealType.DINNER, mealTime = Time.at(s.date, s.dinnerTime, zone), prepMinutes = s.prepDinner, reminderMode = s.dinnerReminderMode),
             )
             val planId = planRepository.savePlan(plan, meals)
             // WR-01：编辑/覆盖前先撤销旧闹钟，杜绝孤儿/幽灵提醒
             if (editingPlanId >= 0) scheduler.cancel(editingPlanId)
             // 排程必须用落库后的真实 Meal（含 id）——AlarmReceiver 依 EXTRA_MEAL_ID 查库，
             // 用内存 id=0 的 Meal 会导致到点提醒查不到餐次而被静默丢弃
-            val savedMeals = planRepository.watchMealsByDate(s.today).first()
+            val savedMeals = planRepository.watchMealsByDate(s.date).first()
             // IN-03：仅今天及未来排程（编辑历史日期只落库，过期闹钟无意义且会被迟到忽略）
-            if (!s.today.isBefore(SystemTimeProvider.today())) {
+            if (!s.date.isBefore(SystemTimeProvider.today())) {
                 scheduler.schedule(plan.copy(id = planId), savedMeals)
             }
-            // FR-1 自动打卡早餐（记录即已吃，默认开，可关）；仅新建生效，编辑不重复打卡
-            if (editingPlanId < 0 && s.autoCheckIn) {
-                checkInUseCase.checkIn(s.today, MealType.BREAKFAST, clock.instant())
-            }
+            // 自动打卡早餐已移除：打卡入口统一走 Home（早餐打卡自动生成 / 单餐记录），
+            // 未来日期计划更无「打卡」语义
             editingPlanId = -1L
             _events.send(CreateEvent.Generated)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -429,7 +455,7 @@ fun CreateScreen(
     if (showFailToast) {
         PixelToast(
             text = "生成失败，请重试",
-            show = showFailToast,
+            show = true,
             onDismiss = { showFailToast = false },
         )
     }
@@ -486,9 +512,9 @@ private fun CreateContent(
             PixelPageTitle(
                 title = if (state.isEdit) "EDIT PLAN" else "NEW PLAN",
                 subtitle = if (state.isEdit) {
-                    if (state.step == 1) "编辑今日计划 · 第 1 步" else "编辑今日计划 · 第 2 步"
+                    if (state.step == 1) "编辑计划 · 第 1 步" else "编辑计划 · 第 2 步"
                 } else {
-                    if (state.step == 1) "第 1 步 · 早餐时间" else "第 2 步 · 选方案 + 微调"
+                    if (state.step == 1) "第 1 步 · 日期与早餐" else "第 2 步 · 选方案 + 微调"
                 },
             )
             // 取消（ghost sm，回首页）
@@ -564,6 +590,26 @@ private fun CreateContent(
 
 @Composable
 private fun BreakfastStep(state: CreateUiState.Content, onIntent: (CreateIntent) -> Unit) {
+    // 计划日期（预约未来计划：今天起不可过去；编辑模式固定原日期，左箭头禁用）
+    // 自动打卡早餐已移除——打卡统一走 Home「打卡现在这餐」（按时段判定 + 自动生成）
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val canShiftBack = state.isEdit || state.date > SystemTimeProvider.today()
+        DateArrow(symbol = "◀", enabled = canShiftBack) { onIntent(CreateIntent.ShiftDate(-1)) }
+        PixelText(
+            text = "${state.date.monthValue}月${state.date.dayOfMonth}日" +
+                if (state.date == SystemTimeProvider.today()) " · 今天" else "",
+            color = PixelColors.white,
+            fontSize = PixelType.Size.xs,
+        )
+        DateArrow(symbol = "▶", enabled = true) { onIntent(CreateIntent.ShiftDate(1)) }
+    }
+
+    Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+
     PixelText(
         text = "早餐时间是进食窗口起点，默认取当前时间。",
         color = PixelColors.gray,
@@ -573,54 +619,50 @@ private fun BreakfastStep(state: CreateUiState.Content, onIntent: (CreateIntent)
     Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
 
     // 早餐时间 stepper（原型 step1：- 08:00 +，±5 分钟）
+    // 范围 [BREAKFAST_MIN, BREAKFAST_MAX]：超范围候选跨午夜 → 校验失败流程走不通（CreateReducer KDoc）
     PixelCard(modifier = Modifier.fillMaxWidth()) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             PixelText(text = "早餐时间", color = PixelColors.gray, fontSize = PixelType.Size.xs)
             Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
             PixelStepper(
                 value = fmtLocalTime(state.breakfastTime),
-                // spec 5.3：早餐范围 00:00–23:55（防 LocalTime 模运算 wrap）
                 onDecrease = {
-                    if (state.breakfastTime > LocalTime.MIN) {
+                    if (state.breakfastTime > CreateReducer.BREAKFAST_MIN) {
                         onIntent(CreateIntent.PickBreakfast(state.breakfastTime.minusMinutes(5)))
                     }
                 },
                 onIncrease = {
-                    if (state.breakfastTime <= LocalTime.of(23, 55)) {
+                    if (state.breakfastTime < CreateReducer.BREAKFAST_MAX) {
                         onIntent(CreateIntent.PickBreakfast(state.breakfastTime.plusMinutes(5)))
                     }
                 },
             )
-        }
-    }
-
-    Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-
-    // FR-1 自动打卡早餐开关（原型 step1 auto chip：开/关）
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(PixelColors.panel)
-            .border(BorderStroke(PixelShape.borderWidth, Color.Black))
-            .padding(horizontal = PixelShape.Spacing.md, vertical = PixelShape.Spacing.sm),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PixelText(text = "自动打卡早餐（记录即已吃）", color = PixelColors.gray, fontSize = PixelType.Size.xs)
-        Box(
-            modifier = Modifier
-                .background(if (state.autoCheckIn) PixelColors.yellow else PixelColors.panel)
-                .border(BorderStroke(PixelShape.borderWidth, Color.Black))
-                .clickable { onIntent(CreateIntent.ToggleAutoCheckIn) }
-                .padding(horizontal = PixelShape.Spacing.md, vertical = PixelShape.Spacing.xs),
-            contentAlignment = Alignment.Center,
-        ) {
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
             PixelText(
-                text = if (state.autoCheckIn) "开" else "关",
-                color = if (state.autoCheckIn) PixelColors.bg else PixelColors.white,
+                text = "建议 ${fmtLocalTime(CreateReducer.BREAKFAST_MIN)} – ${fmtLocalTime(CreateReducer.BREAKFAST_MAX)}",
+                color = PixelColors.gray,
                 fontSize = PixelType.Size.xs,
             )
         }
+    }
+}
+
+/** 日期切换箭头（◀ ▶；禁用态灰显不可点——新建不可选过去日期） */
+@Composable
+private fun DateArrow(symbol: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .background(PixelColors.panel, PixelShape.stair)
+            .border(BorderStroke(PixelShape.borderWidth, Color.Black), PixelShape.stair)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = PixelShape.Spacing.md, vertical = PixelShape.Spacing.xs),
+        contentAlignment = Alignment.Center,
+    ) {
+        PixelText(
+            text = symbol,
+            color = if (enabled) PixelColors.yellow else PixelColors.gray,
+            fontSize = PixelType.Size.xs,
+        )
     }
 }
 
@@ -698,7 +740,7 @@ private fun PlanStep(state: CreateUiState.Content, onIntent: (CreateIntent) -> U
 }
 
 /** LocalTime → HH:mm（Create stepper 显示） */
-private fun fmtLocalTime(t: java.time.LocalTime): String =
+private fun fmtLocalTime(t: LocalTime): String =
     "%02d:%02d".format(t.hour, t.minute)
 
 /** Instant → HH:mm（指定时区，避免裸 systemDefault） */
@@ -717,7 +759,7 @@ private fun CreateScreenPreview() {
                     defaultReminderMode = ReminderMode.NOTIFY,
                     widgetShowFasting = true, onboardingSeen = true,
                 ),
-                today = LocalDate.of(2026, 8, 31),
+                date = LocalDate.of(2026, 8, 31),
                 zone = ZoneId.of("Asia/Shanghai"),
                 defaultBreakfast = LocalTime.of(8, 0),
             ),

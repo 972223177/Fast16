@@ -20,11 +20,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ly.fast16.core.designsystem.theme.LocalPixelFonts
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelMotion
 import com.ly.fast16.core.designsystem.token.PixelType
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 像素打字机文本（同类像素产品对话框灵魂——Undertale / Stardew Valley / 宝可梦均为 typewriter）：
@@ -40,7 +42,7 @@ fun PixelTypewriterText(
     modifier: Modifier = Modifier,
     color: Color = PixelColors.white,
     fontSize: TextUnit = PixelType.Size.sm,
-    fontFamily: FontFamily = PixelType.cjk,
+    fontFamily: FontFamily? = null,
     digital: Boolean = false,
     charMs: Long = PixelMotion.Pop.TYPE_MS,
     style: TextStyle? = null,
@@ -57,7 +59,7 @@ fun PixelTypewriterText(
         shown = ""
         var cp = 0
         while (cp < text.length) {
-            delay(charMs)
+            delay(charMs.milliseconds)
             cp = text.offsetByCodePoints(cp, 1)
             shown = text.substring(0, cp)
         }
@@ -67,19 +69,20 @@ fun PixelTypewriterText(
     LaunchedEffect(shown) {
         while (shown.length < text.length) {
             cursorOn = true
-            delay(PixelMotion.Blink.HALF_PERIOD_MS)
+            delay(PixelMotion.Blink.HALF_PERIOD_MS.milliseconds)
             cursorOn = false
-            delay(PixelMotion.Blink.HALF_PERIOD_MS)
+            delay(PixelMotion.Blink.HALF_PERIOD_MS.milliseconds)
         }
         cursorOn = false
     }
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        val fonts = LocalPixelFonts.current
         Text(
             text = shown,
             color = color,
             fontSize = fontSize,
-            fontFamily = if (digital) PixelType.digital else fontFamily,
+            fontFamily = if (digital) fonts.digital else fontFamily ?: fonts.cjk,
             letterSpacing = if (digital) 2.sp else TextUnit.Unspecified,
             // PS2P 字体 padding 大 → 裁掉保证垂直居中
             style = if (digital) {

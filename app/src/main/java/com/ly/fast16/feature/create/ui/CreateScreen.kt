@@ -625,7 +625,7 @@ private fun BreakfastStep(state: CreateUiState.Content, onIntent: (CreateIntent)
             PixelText(text = "早餐时间", color = PixelColors.gray, fontSize = PixelType.Size.xs)
             Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
             PixelStepper(
-                value = fmtLocalTime(state.breakfastTime),
+                value = Time.hhmm(state.breakfastTime),
                 onDecrease = {
                     if (state.breakfastTime > CreateReducer.BREAKFAST_MIN) {
                         onIntent(CreateIntent.PickBreakfast(state.breakfastTime.minusMinutes(5)))
@@ -639,7 +639,7 @@ private fun BreakfastStep(state: CreateUiState.Content, onIntent: (CreateIntent)
             )
             Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
             PixelText(
-                text = "建议 ${fmtLocalTime(CreateReducer.BREAKFAST_MIN)} – ${fmtLocalTime(CreateReducer.BREAKFAST_MAX)}",
+                text = "建议 ${Time.hhmm(CreateReducer.BREAKFAST_MIN)} – ${Time.hhmm(CreateReducer.BREAKFAST_MAX)}",
                 color = PixelColors.gray,
                 fontSize = PixelType.Size.xs,
             )
@@ -694,7 +694,7 @@ private fun PlanStep(state: CreateUiState.Content, onIntent: (CreateIntent) -> U
                 )
                 Spacer(modifier = Modifier.height(PixelShape.Spacing.xs))
                 PixelText(
-                    text = "午 ${fmt(candidate.lunch, state.zone)} · 晚 ${fmt(candidate.dinner, state.zone)}",
+                    text = "午 ${Time.hhmm(candidate.lunch, state.zone)} · 晚 ${Time.hhmm(candidate.dinner, state.zone)}",
                     color = PixelColors.yellow,
                     fontSize = PixelType.Size.xs,
                     digital = true,
@@ -738,14 +738,6 @@ private fun PlanStep(state: CreateUiState.Content, onIntent: (CreateIntent) -> U
         }
     }
 }
-
-/** LocalTime → HH:mm（Create stepper 显示） */
-private fun fmtLocalTime(t: LocalTime): String =
-    "%02d:%02d".format(t.hour, t.minute)
-
-/** Instant → HH:mm（指定时区，避免裸 systemDefault） */
-private fun fmt(instant: Instant, zone: ZoneId): String =
-    "%02d:%02d".format(Time.timeOf(instant, zone).hour, Time.timeOf(instant, zone).minute)
 
 @PreviewPixel
 @Composable

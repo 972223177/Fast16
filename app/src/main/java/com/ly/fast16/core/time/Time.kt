@@ -40,4 +40,10 @@ object Time {
 
     /** LocalDate → ISO yyyy-MM-dd 字符串（Room 列格式） */
     fun formatDate(date: LocalDate): String = ISO_DATE.format(date)
+
+    /** LocalTime → "HH:mm"（像素产品时刻精度 = 分钟） */
+    fun hhmm(time: LocalTime): String = "%02d:%02d".format(time.hour, time.minute)
+
+    /** Instant → 指定时区 "HH:mm" */
+    fun hhmm(instant: Instant, zone: ZoneId): String = hhmm(instant.atZone(zone).toLocalTime())
 }

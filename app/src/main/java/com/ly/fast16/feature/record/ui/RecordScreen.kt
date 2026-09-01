@@ -10,14 +10,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,6 +35,8 @@ import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCalendar
 import com.ly.fast16.core.designsystem.component.PixelCard
 import com.ly.fast16.core.designsystem.component.PixelDialog
+import com.ly.fast16.core.designsystem.component.PixelDivider
+import com.ly.fast16.core.designsystem.component.PixelPageScaffold
 import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelPageTitle
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
@@ -46,7 +44,6 @@ import com.ly.fast16.core.designsystem.component.PixelSectionTitle
 import com.ly.fast16.core.designsystem.component.PixelStatBars
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.component.PixelToast
-import com.ly.fast16.core.designsystem.component.PixelVerticalScrollbar
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
@@ -282,61 +279,15 @@ private fun RecordContent(
     modifier: Modifier = Modifier,
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .widthIn(max = PixelShape.contentMaxWidth),
-    ) {
-        // 固定标题栏：不随内容滚动出屏
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = PixelShape.Spacing.lg,
-                    end = PixelShape.Spacing.lg,
-                    top = PixelShape.Spacing.lg,
-                ),
-            horizontalAlignment = Alignment.Start,
-        ) {
+    PixelPageScaffold(
+        modifier = modifier,
+        header = {
             // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
             PixelPageTitle(title = "RECORD", subtitle = "统计概览 · 日历打卡")
             Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .background(PixelColors.panel.copy(alpha = 0.6f)),
-            )
-        }
-
-        // 滚动区（标题栏以下）
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) {
-        val scrollState = rememberScrollState()
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(
-                    state = scrollState,
-                    // 与 Home 一致：关掉 overscroll 边缘拉伸，避免「还能滚」的错觉
-                    overscrollEffect = null,
-                )
-                .padding(
-                    start = PixelShape.Spacing.lg,
-                    end = PixelShape.Spacing.lg,
-                    top = PixelShape.Spacing.lg,
-                    // 底部与 PixelBottomBar 相邻，无需 xxl 留白
-                    bottom = PixelShape.Spacing.lg,
-                ),
-            horizontalAlignment = Alignment.Start,
-        ) {
+            PixelDivider()
+        },
+    ) {
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
         // 分区标题：统计概览
@@ -389,20 +340,6 @@ private fun RecordContent(
             onMonthChange = { onIntent(RecordIntent.SwitchMonth(if (it > state.month) 1 else -1)) },
             onSelectDay = { onIntent(RecordIntent.TapDate(it)) },
         )
-
-        }
-        // 像素滚动条：仅在内容真的溢出时出现（统计+日历一屏可见 → 不画无意义的空轨道）
-        if (scrollState.maxValue > 0) {
-            PixelVerticalScrollbar(
-                scrollState = scrollState,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .padding(vertical = PixelShape.Spacing.sm),
-            )
-        }
-        }
-    }
     }
 
     // 选中日补打卡：像素弹窗（一屏可见优化：原为日历下方内嵌面板，占 ~230dp 撑高页面；

@@ -1,5 +1,8 @@
 package com.ly.fast16.feature.settings.ui
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,34 +27,48 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelDialog
+import com.ly.fast16.core.designsystem.component.PixelLoading
+import com.ly.fast16.core.designsystem.component.PixelStepper
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.component.PreviewPixel
-import com.ly.fast16.domain.model.ReminderMode
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
+import com.ly.fast16.core.system.ExactAlarmGate
+import com.ly.fast16.core.system.NotificationPermission
+import com.ly.fast16.data.local.AppSettings
 import com.ly.fast16.data.local.SettingsStore
+import com.ly.fast16.domain.model.ReminderMode
 import com.ly.fast16.feature.onboarding.ui.OnboardingDialog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
 // ---------- Intent ----------
 
-/** 设置页用户意图（改提醒模式 / 重看说明；其余偏好只读展示） */
+/** 设置页用户意图（改偏好 / 重看说明；偏好均可配，写 SettingsStore） */
 sealed interface SettingsIntent {
     data object ShowOnboarding : SettingsIntent
 
     /** 修改默认提醒模式（写 SettingsStore，副作用在 ViewModel） */
     data class SetReminderMode(val mode: ReminderMode) : SettingsIntent
+
+    data class SetWindowHours(val hours: Int) : SettingsIntent
+    data class SetMinMealGap(val minutes: Int) : SettingsIntent
+    data class SetDinnerBuffer(val minutes: Int) : SettingsIntent
+    data class SetPrepBreakfast(val minutes: Int) : SettingsIntent
+    data class SetPrepLunch(val minutes: Int) : SettingsIntent
+    data class SetPrepDinner(val minutes: Int) : SettingsIntent
 }
 
 // ---------- State ----------
@@ -68,6 +85,12 @@ sealed interface SettingsUiState {
         val defaultPrepLunchMinutes: Int,
         val defaultPrepDinnerMinutes: Int,
         val defaultReminderMode: String,
+        /** 通知权限是否已授权（33+ 运行时；<33 恒 true） */
+        val notificationGranted: Boolean = true,
+        /** 精确闹钟是否可精确排程（31+；false = 提醒可能被 Doze 延迟） */
+        val exactAlarmEnabled: Boolean = true,
+        /** 精确闹钟授权引导 Intent（canScheduleExact 时 null） */
+        val exactAlarmGrantIntent: Intent? = null,
     ) : SettingsUiState
 }
 
@@ -77,15 +100,25 @@ object SettingsReducer {
     fun reduce(state: SettingsUiState, intent: SettingsIntent): SettingsUiState =
         when (intent) {
             SettingsIntent.ShowOnboarding -> state // 重看弹窗由 Screen 层控制
-            is SettingsIntent.SetReminderMode -> state // 写 SettingsStore，flow 驱动 UI 自动更新（SSOT）
+            // 其余写 SettingsStore，settings flow 驱动 UI 自动更新（SSOT）
+            is SettingsIntent.SetReminderMode,
+            is SettingsIntent.SetWindowHours,
+            is SettingsIntent.SetMinMealGap,
+            is SettingsIntent.SetDinnerBuffer,
+            is SettingsIntent.SetPrepBreakfast,
+            is SettingsIntent.SetPrepLunch,
+            is SettingsIntent.SetPrepDinner,
+            -> state
         }
 }
 
 // ---------- ViewModel ----------
 
-/** 设置页 ViewModel：订阅 SettingsStore（SSOT，UI 只读展示当前值） */
+/** 设置页 ViewModel：订阅 SettingsStore（SSOT）+ 权限状态（ExactAlarmGate / NotificationPermission） */
 class SettingsViewModel(
     private val settingsStore: SettingsStore,
+    private val exactAlarmGate: ExactAlarmGate,
+    private val notificationPermission: NotificationPermission,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
@@ -93,32 +126,51 @@ class SettingsViewModel(
 
     init {
         viewModelScope.launch {
-            settingsStore.settings.map { s ->
-                SettingsUiState.Content(
-                    windowHours = s.windowHours,
-                    minMealGapMinutes = s.minMealGapMinutes,
-                    dinnerBufferMinutes = s.dinnerBufferMinutes,
-                    defaultPrepBreakfastMinutes = s.defaultPrepBreakfastMinutes,
-                    defaultPrepLunchMinutes = s.defaultPrepLunchMinutes,
-                    defaultPrepDinnerMinutes = s.defaultPrepDinnerMinutes,
-                    defaultReminderMode = s.defaultReminderMode.name,
-                )
-            }.collect { _uiState.value = it }
+            settingsStore.settings.collect { s -> _uiState.value = buildContent(s) }
         }
     }
 
+    /** 权限变化后手动刷新（通知授权回调），SSOT 不变（设置本身未改） */
+    fun refreshPermissions() {
+        viewModelScope.launch {
+            val s = settingsStore.settings.first()
+            _uiState.value = buildContent(s)
+        }
+    }
+
+    private fun buildContent(s: AppSettings): SettingsUiState.Content = SettingsUiState.Content(
+        windowHours = s.windowHours,
+        minMealGapMinutes = s.minMealGapMinutes,
+        dinnerBufferMinutes = s.dinnerBufferMinutes,
+        defaultPrepBreakfastMinutes = s.defaultPrepBreakfastMinutes,
+        defaultPrepLunchMinutes = s.defaultPrepLunchMinutes,
+        defaultPrepDinnerMinutes = s.defaultPrepDinnerMinutes,
+        defaultReminderMode = s.defaultReminderMode.name,
+        notificationGranted = notificationPermission.isGranted,
+        exactAlarmEnabled = exactAlarmGate.canScheduleExact,
+        exactAlarmGrantIntent = exactAlarmGate.grantIntent(),
+    )
+
     fun onIntent(intent: SettingsIntent) {
         _uiState.value = SettingsReducer.reduce(_uiState.value, intent)
-        if (intent is SettingsIntent.SetReminderMode) {
-            // 写 DataStore；settings flow 变化驱动 UI 自动刷新（SSOT）
-            viewModelScope.launch { settingsStore.setDefaultReminderMode(intent.mode) }
+        viewModelScope.launch {
+            when (intent) {
+                is SettingsIntent.SetReminderMode -> settingsStore.setDefaultReminderMode(intent.mode)
+                is SettingsIntent.SetWindowHours -> settingsStore.setWindowHours(intent.hours)
+                is SettingsIntent.SetMinMealGap -> settingsStore.setMinMealGapMinutes(intent.minutes)
+                is SettingsIntent.SetDinnerBuffer -> settingsStore.setDinnerBufferMinutes(intent.minutes)
+                is SettingsIntent.SetPrepBreakfast -> settingsStore.setDefaultPrepBreakfastMinutes(intent.minutes)
+                is SettingsIntent.SetPrepLunch -> settingsStore.setDefaultPrepLunchMinutes(intent.minutes)
+                is SettingsIntent.SetPrepDinner -> settingsStore.setDefaultPrepDinnerMinutes(intent.minutes)
+                SettingsIntent.ShowOnboarding -> Unit
+            }
         }
     }
 }
 
 // ---------- Screen ----------
 
-/** 设置页 Screen（设置项列表 + 默认提醒只读项 M3 挂点 + 重看 8:16 说明） */
+/** 设置页 Screen（设置项列表 + 权限引导 + 重看 8:16 说明） */
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
@@ -128,12 +180,17 @@ fun SettingsScreen(
     val state by vm.uiState.collectAsState()
     var showOnboarding by remember { mutableStateOf(false) }
 
+    // 通知权限运行时申请（33+；回调后刷新状态）
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { vm.refreshPermissions() }
+
     if (showOnboarding) {
         OnboardingDialog(onDismiss = { showOnboarding = false })
     }
 
     when (val s = state) {
-        SettingsUiState.Loading -> Unit
+        SettingsUiState.Loading -> PixelLoading()
         is SettingsUiState.Content -> SettingsContent(
             state = s,
             onShowOnboarding = {
@@ -141,19 +198,31 @@ fun SettingsScreen(
                 onShowOnboarding()
             },
             onSetReminderMode = { vm.onIntent(SettingsIntent.SetReminderMode(it)) },
+            onSetSetting = vm::onIntent,
+            onRequestNotification = {
+                // 字符串字面量：POST_NOTIFICATIONS 常量 API 33+（minSdk 24），且 <33 恒已授权不会走到这
+                notificationLauncher.launch("android.permission.POST_NOTIFICATIONS")
+            },
             modifier = modifier,
         )
     }
 }
+
+/** 可编辑数值设置项（stepper 弹窗用） */
+private enum class EditableSetting { WINDOW, GAP, BUFFER, PREP_BREAKFAST, PREP_LUNCH, PREP_DINNER }
 
 @Composable
 private fun SettingsContent(
     state: SettingsUiState.Content,
     onShowOnboarding: () -> Unit,
     onSetReminderMode: (ReminderMode) -> Unit,
+    onSetSetting: (SettingsIntent) -> Unit,
+    onRequestNotification: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showReminderDialog by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<EditableSetting?>(null) }
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
@@ -174,19 +243,44 @@ private fun SettingsContent(
         )
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
-        // 设置项（原型 set-row：label 左 / value 右）
-        SettingRow(label = "进食窗口", value = "${state.windowHours} 小时")
-        SettingRow(label = "餐间隔下限", value = "${state.minMealGapMinutes} 分钟")
-        SettingRow(label = "晚餐距窗口结束缓冲", value = "${state.dinnerBufferMinutes} 分钟")
-        SettingRow(
-            label = "默认备餐时长",
-            value = "早${state.defaultPrepBreakfastMinutes} · 午${state.defaultPrepLunchMinutes} · 晚${state.defaultPrepDinnerMinutes}",
-        )
-        // 提醒模式（M3 可配：点击弹窗 4 选，写 SettingsStore）
+        // 设置项（原型 set-row：label 左 / value 右；均可配 → stepper 弹窗）
+        SettingRow(label = "进食窗口", value = "${state.windowHours} 小时", onClick = { editing = EditableSetting.WINDOW })
+        SettingRow(label = "餐间隔下限", value = "${state.minMealGapMinutes} 分钟", onClick = { editing = EditableSetting.GAP })
+        SettingRow(label = "晚餐距窗口结束缓冲", value = "${state.dinnerBufferMinutes} 分钟", onClick = { editing = EditableSetting.BUFFER })
+        SettingRow(label = "早餐默认备餐", value = "${state.defaultPrepBreakfastMinutes} 分钟", onClick = { editing = EditableSetting.PREP_BREAKFAST })
+        SettingRow(label = "午餐默认备餐", value = "${state.defaultPrepLunchMinutes} 分钟", onClick = { editing = EditableSetting.PREP_LUNCH })
+        SettingRow(label = "晚餐默认备餐", value = "${state.defaultPrepDinnerMinutes} 分钟", onClick = { editing = EditableSetting.PREP_DINNER })
+        // 提醒模式（可配：点击弹窗 4 选，写 SettingsStore）
         SettingRow(
             label = "提醒模式",
             value = reminderLabel(state.defaultReminderMode),
             onClick = { showReminderDialog = true },
+        )
+
+        // 精确闹钟未授权警示（P1）：点击前往系统授权，避免 Doze 延迟提醒
+        if (!state.exactAlarmEnabled) {
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(PixelColors.panel)
+                    .border(BorderStroke(PixelShape.borderWidth, PixelColors.red))
+                    .clickable { state.exactAlarmGrantIntent?.let { context.startActivity(it) } }
+                    .padding(PixelShape.Spacing.md),
+            ) {
+                PixelText(
+                    text = "⚠ 精确提醒未授权 · 点击前往系统授权",
+                    color = PixelColors.red,
+                    fontSize = PixelType.Size.xs,
+                )
+            }
+        }
+
+        // 通知权限行（P1）：未授权时点击申请（33+）
+        SettingRow(
+            label = "通知权限",
+            value = if (state.notificationGranted) "已授权" else "未授权",
+            onClick = { if (!state.notificationGranted) onRequestNotification() },
         )
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
@@ -255,6 +349,96 @@ private fun SettingsContent(
             }
         }
     }
+
+    // 数值设置 stepper 弹窗（偏好可配，写 SettingsStore）
+    editing?.let { e ->
+        NumericSettingDialog(
+            title = numericTitle(e),
+            value = numericValue(state, e),
+            valueSuffix = numericSuffix(e),
+            min = numericRange(e).first,
+            max = numericRange(e).last,
+            step = numericStep(e),
+            onValueChange = { v ->
+                onSetSetting(numericIntent(e, v))
+                editing = null
+            },
+            onClose = { editing = null },
+        )
+    }
+}
+
+/** 数值设置弹窗：像素 stepper ± 步进（clamp 到范围）+ 完成 */
+@Composable
+private fun NumericSettingDialog(
+    title: String,
+    value: Int,
+    valueSuffix: String,
+    min: Int,
+    max: Int,
+    step: Int,
+    onValueChange: (Int) -> Unit,
+    onClose: () -> Unit,
+) {
+    PixelDialog(onDismiss = onClose, title = title) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            PixelStepper(
+                value = "$value$valueSuffix",
+                onDecrease = { onValueChange((value - step).coerceAtLeast(min)) },
+                onIncrease = { onValueChange((value + step).coerceAtMost(max)) },
+            )
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+            PixelButton(text = "完成", onClick = onClose, primary = true, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+// ---------- 数值设置项映射（标题/当前值/范围/步长/Intent） ----------
+
+private fun numericTitle(e: EditableSetting): String = when (e) {
+    EditableSetting.WINDOW -> "进食窗口（小时）"
+    EditableSetting.GAP -> "餐间隔下限（分钟）"
+    EditableSetting.BUFFER -> "晚餐距窗口结束（分钟）"
+    EditableSetting.PREP_BREAKFAST -> "早餐默认备餐（分钟）"
+    EditableSetting.PREP_LUNCH -> "午餐默认备餐（分钟）"
+    EditableSetting.PREP_DINNER -> "晚餐默认备餐（分钟）"
+}
+
+private fun numericValue(state: SettingsUiState.Content, e: EditableSetting): Int = when (e) {
+    EditableSetting.WINDOW -> state.windowHours
+    EditableSetting.GAP -> state.minMealGapMinutes
+    EditableSetting.BUFFER -> state.dinnerBufferMinutes
+    EditableSetting.PREP_BREAKFAST -> state.defaultPrepBreakfastMinutes
+    EditableSetting.PREP_LUNCH -> state.defaultPrepLunchMinutes
+    EditableSetting.PREP_DINNER -> state.defaultPrepDinnerMinutes
+}
+
+private fun numericSuffix(e: EditableSetting): String =
+    if (e == EditableSetting.WINDOW) " 小时" else " 分钟"
+
+private fun numericRange(e: EditableSetting): IntRange = when (e) {
+    EditableSetting.WINDOW -> 4..16
+    EditableSetting.GAP -> 60..240
+    EditableSetting.BUFFER -> 0..60
+    EditableSetting.PREP_BREAKFAST,
+    EditableSetting.PREP_LUNCH,
+    EditableSetting.PREP_DINNER,
+    -> 0..120
+}
+
+private fun numericStep(e: EditableSetting): Int = when (e) {
+    EditableSetting.WINDOW -> 1
+    EditableSetting.GAP -> 10
+    else -> 5
+}
+
+private fun numericIntent(e: EditableSetting, v: Int): SettingsIntent = when (e) {
+    EditableSetting.WINDOW -> SettingsIntent.SetWindowHours(v)
+    EditableSetting.GAP -> SettingsIntent.SetMinMealGap(v)
+    EditableSetting.BUFFER -> SettingsIntent.SetDinnerBuffer(v)
+    EditableSetting.PREP_BREAKFAST -> SettingsIntent.SetPrepBreakfast(v)
+    EditableSetting.PREP_LUNCH -> SettingsIntent.SetPrepLunch(v)
+    EditableSetting.PREP_DINNER -> SettingsIntent.SetPrepDinner(v)
 }
 
 /** 设置行（原型 set-row：面板底黑边，label 左 / 像素 value 右；可选点击） */
@@ -299,6 +483,8 @@ private fun SettingsScreenPreview() {
             ),
             onShowOnboarding = {},
             onSetReminderMode = {},
+            onSetSetting = {},
+            onRequestNotification = {},
         )
     }
 }

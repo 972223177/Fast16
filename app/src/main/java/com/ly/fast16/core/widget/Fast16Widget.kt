@@ -50,12 +50,15 @@ import org.koin.core.component.inject
  * 标题「816 轻断食」+ 断食状态（SettingsStore.widgetShowFasting 控制）+
  * 三餐状态点（已打卡绿 / 未打灰）+「打卡午餐」与「打开 App」按钮。
  *
- * - 数据：provideGlance 内 runBlocking 快照（WidgetDataProvider，低频、当日 ≤3 餐）
+ * - 数据：provideGlance 协程内 await 快照（WidgetDataProvider 注入 domain repository，低频）
  * - 打卡：Glance ActionCallback（不启动 Activity，31+ trampoline 合规）→ CheckInUseCase
  *   （@Upsert 幂等 + Meal 联动）→ updateAll 刷新
  * - 打开 App：actionStartActivity 直达 MainActivity（禁 trampoline）
  */
-class Fast16Widget : GlanceAppWidget() {
+class Fast16Widget : GlanceAppWidget(), KoinComponent {
+
+    // 依赖经 KoinComponent 惰性注入（系统实例化类，与 Receiver 同模式）——不穿透分层
+    private val dataProvider: WidgetDataProvider by inject()
 
     // 响应式：支持桌面拉伸/缩放到多个尺寸（2×1 紧凑 / 3×1 宽 / 3×2 大）
     override val sizeMode: SizeMode = SizeMode.Responsive(
@@ -67,7 +70,7 @@ class Fast16Widget : GlanceAppWidget() {
     )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val data = WidgetDataProvider.load(context)
+        val data = dataProvider.load()
         provideContent {
             Fast16WidgetContent(data)
         }

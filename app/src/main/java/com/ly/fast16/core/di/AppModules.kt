@@ -12,6 +12,7 @@ import com.ly.fast16.core.scheduling.AlarmPlanScheduler
 import com.ly.fast16.core.scheduling.NotificationReminderChannel
 import com.ly.fast16.core.scheduling.PlanScheduler
 import com.ly.fast16.core.scheduling.ReminderChannel
+import com.ly.fast16.core.widget.WidgetDataProvider
 import com.ly.fast16.data.local.AppDatabase
 import com.ly.fast16.data.local.CheckInDao
 import com.ly.fast16.data.local.SettingsStore
@@ -67,6 +68,8 @@ val dataModule: Module = module {
     single<CheckInUseCase> { DefaultCheckInUseCase(get(), get()) }
     // 早餐打卡自动生成（Home「打卡现在这餐」入口；Settings 由调用方读出传入，无 data 依赖）
     single { AutoPlanGenerator(get(), get()) }
+    // 桌面小组件数据源：注入 domain repository + SettingsStore（core/widget 不直连 DAO）
+    single { WidgetDataProvider(get(), get(), get()) }
 }
 
 /**

@@ -86,7 +86,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import java.time.Clock
@@ -153,6 +152,17 @@ data class MealUi(
     val hasMeal: Boolean,
 )
 
+/**
+ * 每秒变动的实时状态（高频 ticker）：
+ * 断食倒计时 / 角色 / 气泡。与低频 [HomeUiState] 分离订阅，
+ * 每秒只重组「倒计时 + 角色 + 气泡」局部，避免整页每秒重组。
+ */
+data class HomeLiveState(
+    val fastingSeconds: Long?,
+    val characterState: CharacterState,
+    val bubbleText: String,
+)
+
 // ---------- ViewModel ----------
 
 /** 首页 ViewModel（FR-7）：订阅 DAO Flow → reconcile → 角色/断食派生 → 打卡联动 */
@@ -169,6 +179,15 @@ class HomeViewModel(
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    /** 每秒实时状态（倒计时/角色/气泡）：高频订阅，避免整页每秒重组 */
+    private val _liveState = MutableStateFlow(HomeLiveState(null, CharacterState.IDLE, ""))
+    val liveState: StateFlow<HomeLiveState> = _liveState.asStateFlow()
+
+    // 高频 ticker 复用快照（低频流每次更新时写入）
+    private var cachedPlan: MealPlan? = null
+    private var cachedMeals: List<Meal> = emptyList()
+    private var cachedChecked: Set<MealType> = emptySet()
+
     /** 打卡成功轻提示 */
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
@@ -178,6 +197,7 @@ class HomeViewModel(
     val confetti: StateFlow<PixelConfettiBurst?> = _confetti.asStateFlow()
 
     init {
+        // 低频流：数据变化驱动（打卡/计划/统计变更才重算），不含 ticker → uiState 不每秒换新
         viewModelScope.launch {
             val today = SystemTimeProvider.today()
             combine(
@@ -186,13 +206,30 @@ class HomeViewModel(
                 checkInRepository.watchMonth(YearMonth.from(today)),
                 // 跨月滚动窗口（今起 366 天）：连续打卡不受月末截断
                 checkInRepository.watchCompletedDays(today.minusDays(366), today),
-                secondTicker(),
-            ) { planPair, meals, monthChecked, completedDays, _ ->
+            ) { planPair, meals, monthChecked, completedDays ->
                 val now = clock.instant()
                 val checkedSet = monthChecked[today].orEmpty()
+                // 缓存快照供高频 ticker 复用（原始 meals，ticker 侧自行 reconcile）
+                cachedPlan = planPair?.first
+                cachedMeals = meals
+                cachedChecked = checkedSet
                 val streak = StreakCalculator.computeStreak(completedDays, today)
                 derive(now, planPair?.first, meals, checkedSet, streak)
             }.collect { _uiState.value = it }
+        }
+        // 高频流：每秒刷新实时状态（倒计时/角色/气泡），只驱动 liveState 订阅方重组
+        viewModelScope.launch {
+            while (true) {
+                val now = clock.instant()
+                val reconciled = cachedMeals.map { meal ->
+                    meal.copy(status = MealStateMachine.advance(meal, now, meal.type in cachedChecked))
+                }
+                val character = CharacterStateDeriver.derive(now, cachedPlan, reconciled)
+                val fasting = FastingTimer.fastingRemaining(now, reconciled)?.seconds
+                val bubble = bubbleText(now, character, reconciled)
+                _liveState.value = HomeLiveState(fasting, character, bubble)
+                delay(1000.milliseconds)
+            }
         }
     }
 
@@ -285,14 +322,6 @@ class HomeViewModel(
 
     fun consumeConfetti() {
         _confetti.value = null
-    }
-
-    /** 每秒整秒刷新（断食剩余「分:秒」秒级跳字，像素风阶跃） */
-    private fun secondTicker() = flow {
-        while (true) {
-            emit(Unit)
-            delay(1000.milliseconds)
-        }
     }
 
     /** 纯派生：reconcile + 角色 + 断食剩余 + 三餐状态 + 窗口进度（无 IO/时间源之外的副作用） */
@@ -414,6 +443,7 @@ fun HomeScreen(
         HomeUiState.Loading -> PixelLoading()
         is HomeUiState.Content -> HomeContent(
             state = s,
+            liveState = vm.liveState,
             onNewPlan = { vm.onIntent(HomeIntent.NewPlan); onNewPlan() },
             onCheckIn = {
                 vm.onIntent(HomeIntent.CheckIn(it))
@@ -464,6 +494,7 @@ fun HomeScreen(
 @Composable
 private fun HomeContent(
     state: HomeUiState.Content,
+    liveState: StateFlow<HomeLiveState>,
     onNewPlan: () -> Unit,
     onCheckIn: (MealType) -> Unit,
     onUncheckIn: (MealType) -> Unit,
@@ -538,53 +569,20 @@ private fun HomeContent(
         ) {
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
-        // 角色「小健」+ 气泡（文案同源 SpeechCatalog）
-        // 一屏可见优化：纵向堆叠（角色 60 + 间距 8 + 气泡 ~43 ≈ 111dp）改横向并排 → 60dp
-        Row(
+        // 角色「小健」+ 气泡（文案同源 SpeechCatalog）——高频 live 驱动，每秒仅本行重组
+        CharacterRow(
+            liveState = liveState,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PixelCharacter(state = state.characterState)
-            PixelBubble(
-                text = state.bubbleText,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        )
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
-        // 断食面板：标签 + 大计时（时:分:秒）+ 16 格 seg（原型 fast-panel）
-        // 三态：有倒计时（距下一未完成餐）/ 全部打卡完成（今日完成）/ 时间过完未打卡（窗口结束）
-        PixelCard(
+        // 断食面板：标签 + 大计时（时:分:秒）+ 16 格 seg（原型 fast-panel）——高频 live 驱动
+        FastingPanel(
+            state = state,
+            liveState = liveState,
             modifier = Modifier.fillMaxWidth(),
-        ) {
-            val allChecked = state.meals.isNotEmpty() && state.meals.all { it.checkedIn }
-            val (panelLabel, panelValue, panelColor) = when {
-                state.fastingSeconds != null ->
-                    Triple("断食中 · 距下一餐", formatFastingHMS(state.fastingSeconds), PixelColors.yellow)
-                allChecked ->
-                    Triple("今日已完成 ✦", "00:00:00", PixelColors.green)
-                else ->
-                    Triple("今日窗口已结束", "--:--:--", PixelColors.gray)
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                PixelText(text = panelLabel, color = PixelColors.gray, fontSize = PixelType.Size.xs)
-                Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
-                // 断食倒计时（一屏可见优化：spec 2.2 的 34px 下调至 Size.lg = 28px，仍是画面最大字号）
-                PixelNumber(
-                    value = panelValue,
-                    color = panelColor,
-                    fontSize = PixelType.Size.lg,
-                )
-                Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-                PixelProgressBar(
-                    progress = if (allChecked) 1f else state.windowProgress,
-                    segments = 16,
-                    litColor = PixelColors.green,
-                )
-            }
-        }
+        )
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
@@ -758,6 +756,120 @@ private fun HomeContent(
     }
 }
 
+/** 角色 + 气泡行：订阅高频 liveState，每秒仅本行重组（角色参数不变时 Compose 自动 skip） */
+@Composable
+private fun CharacterRow(
+    liveState: StateFlow<HomeLiveState>,
+    modifier: Modifier = Modifier,
+) {
+    val live by liveState.collectAsState()
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PixelCharacter(state = live.characterState)
+        PixelBubble(
+            text = live.bubbleText,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/**
+ * 断食面板：标签 + 主值 + 16 格 seg + 状态副信息（原型 fast-panel）。
+ * 四态：有倒计时 / 全部打卡完成 / 窗口结束（有计划）/ 未排窗口（无计划）。
+ * 订阅高频 liveState（倒计时数字每秒跳），低频 state 提供 allChecked 与窗口进度；
+ * 状态描边随状态着色（黄/绿/灰），主值与副信息填充各态，避免窗口结束/无计划态空荡。
+ */
+@Composable
+private fun FastingPanel(
+    state: HomeUiState.Content,
+    liveState: StateFlow<HomeLiveState>,
+    modifier: Modifier = Modifier,
+) {
+    val live by liveState.collectAsState()
+    val checkedCount = state.meals.count { it.checkedIn }
+    val total = state.meals.size
+    val allChecked = state.meals.isNotEmpty() && state.meals.all { it.checkedIn }
+    // 下一未完成餐（断食中副信息：开饭时刻提示）
+    val nextMeal = state.meals.firstOrNull { !it.checkedIn }
+    val panel = when {
+        live.fastingSeconds != null -> PanelContent(
+            label = "断食中 · 距下一餐",
+            value = formatFastingHMS(live.fastingSeconds),
+            color = PixelColors.yellow,
+            hint = nextMeal?.let { "${it.name} ${it.timeLabel} 开饭" } ?: "",
+            border = PixelColors.yellow,
+        )
+        allChecked -> PanelContent(
+            label = "今日已完成 ✦",
+            value = "00:00:00",
+            color = PixelColors.green,
+            hint = "三餐已打卡，明天见！",
+            border = PixelColors.green,
+        )
+        state.hasPlanToday -> PanelContent(
+            label = "今日窗口已结束",
+            value = if (total > 0) "已打卡 $checkedCount/$total" else "--:--:--",
+            color = PixelColors.yellow,
+            hint = "明早记得记录早餐",
+            border = PixelColors.gray,
+        )
+        else -> PanelContent(
+            label = "今日未排窗口",
+            value = "--:--:--",
+            color = PixelColors.gray,
+            hint = "随时打卡早餐，开启新计划",
+            border = PixelColors.gray,
+        )
+    }
+    PixelCard(
+        modifier = modifier,
+        borderColor = panel.border,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            PixelText(text = panel.label, color = PixelColors.gray, fontSize = PixelType.Size.xs)
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+            if (panel.value.all { it in "0123456789:-" }) {
+                // 纯计时串走逐位数字（倒计时 / 完成 00:00:00）
+                PixelNumber(
+                    value = panel.value,
+                    color = panel.color,
+                    fontSize = PixelType.Size.lg,
+                )
+            } else {
+                // 含中文的主值（已打卡 X/3）走中文字体，避免数字字体回落错位
+                PixelText(
+                    text = panel.value,
+                    color = panel.color,
+                    fontSize = PixelType.Size.md,
+                )
+            }
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+            PixelProgressBar(
+                progress = if (allChecked) 1f else state.windowProgress,
+                segments = 16,
+                litColor = PixelColors.green,
+            )
+            // 状态副信息：填充面板底部，避免窗口结束/未排窗口态显得空荡
+            if (panel.hint.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                PixelText(text = panel.hint, color = PixelColors.gray, fontSize = PixelType.Size.xs)
+            }
+        }
+    }
+}
+
+/** 断食面板四态内容（label/主值/主值色/副信息/描边色） */
+private data class PanelContent(
+    val label: String,
+    val value: String,
+    val color: Color,
+    val hint: String,
+    val border: Color,
+)
+
 /** streak chip（原型 home-streak：🔥 N 天，点击跳记录页） */
 @Composable
 private fun StreakChip(streak: Int, onClick: () -> Unit) {
@@ -813,6 +925,9 @@ private fun HomeScreenPreview() {
     PixelTheme {
         HomeContent(
             state = previewContentState(),
+            liveState = remember {
+                MutableStateFlow(HomeLiveState(3 * 3600 + 20 * 60 + 12, CharacterState.FASTING, "断食中，坚持就是胜利！"))
+            },
             onNewPlan = {},
             onCheckIn = {},
             onUncheckIn = {},
@@ -838,6 +953,9 @@ private fun HomeContentFramePreview() {
         ) { innerPadding ->
             HomeContent(
                 state = previewContentState(),
+                liveState = remember {
+                    MutableStateFlow(HomeLiveState(3 * 3600 + 20 * 60 + 12, CharacterState.FASTING, "断食中，坚持就是胜利！"))
+                },
                 onNewPlan = {},
                 onCheckIn = {},
                 onUncheckIn = {},
@@ -905,6 +1023,7 @@ private fun HomeEmptyPreview() {
     PixelTheme {
         HomeContent(
             state = emptyPreviewState(detected = MealType.DINNER, checked = emptySet()),
+            liveState = remember { MutableStateFlow(HomeLiveState(null, CharacterState.IDLE, "现在是断食时段，好好休息吧！")) },
             onNewPlan = {},
             onCheckIn = {},
             onUncheckIn = {},
@@ -929,6 +1048,7 @@ private fun HomeEmptyCheckedPreview() {
     PixelTheme {
         HomeContent(
             state = emptyPreviewState(detected = MealType.DINNER, checked = setOf(MealType.DINNER)),
+            liveState = remember { MutableStateFlow(HomeLiveState(null, CharacterState.IDLE, "现在是断食时段，好好休息吧！")) },
             onNewPlan = {},
             onCheckIn = {},
             onUncheckIn = {},

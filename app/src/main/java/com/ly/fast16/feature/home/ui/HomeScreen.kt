@@ -310,7 +310,7 @@ class HomeViewModel(
         }
         val character = CharacterStateDeriver.derive(now = now, plan = plan, meals = reconciled)
         val fasting = FastingTimer.fastingRemaining(now, reconciled)
-        val bubble = bubbleText(character, reconciled)
+        val bubble = bubbleText(now, character, reconciled)
         val mealUis = reconciled.map { meal ->
             val zone = SystemTimeProvider.zone
             val t = Time.timeOf(meal.mealTime, zone)
@@ -359,8 +359,15 @@ class HomeViewModel(
         )
     }
 
-    private fun bubbleText(character: CharacterState, meals: List<Meal>): String = when (character) {
-        CharacterState.IDLE -> "来记录早餐，开启今天第一餐吧！"
+    private fun bubbleText(now: Instant, character: CharacterState, meals: List<Meal>): String = when (character) {
+        // IDLE = 无计划（derive 仅在 plan==null || meals.isEmpty 时为 IDLE）：按时段给提示，
+        // 避免深夜还喊「记录早餐」；非用餐时段 → 断食/休息文案
+        CharacterState.IDLE -> when (MealWindow.detect(Time.timeOf(now, SystemTimeProvider.zone))) {
+            MealType.BREAKFAST -> "来记录早餐，开启今天第一餐吧！"
+            MealType.LUNCH -> "来记录午餐，保持节奏！"
+            MealType.DINNER -> "来记录晚餐，吃得开心！"
+            null -> "现在是断食时段，好好休息吧！"
+        }
         // 气泡取餐与 CharacterStateDeriver 同源：只取「reconcile 后正处于该状态」的餐。
         // 原 firstOrNull { prepMinutes > 0 } / lastOrNull 不看 status，预打卡后会把已完成的
         // 餐当备餐/开饭对象，导致「面板已完成、气泡还在备餐」联动错乱。
@@ -374,7 +381,8 @@ class HomeViewModel(
             } ?: "开饭啦！慢慢吃"
 
         CharacterState.REST -> "今天完成啦，干得漂亮！"
-        CharacterState.FASTING -> "断食中，再坚持一下就开饭！"
+        // 中性化：避免深夜刚进断食时「再坚持一下就开饭」误导（距下次开饭可能 10+ 小时）
+        CharacterState.FASTING -> "断食中，坚持就是胜利！"
     }
 }
 
@@ -471,40 +479,63 @@ private fun HomeContent(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(
-                state = scrollState,
-                // overscrollEffect = null 关掉边缘拉伸：① 内容本就一屏可见时，滑动不再产生
-                // 「还能往下滚」的错觉，消除滚动交互负担；② 边缘拉伸属 M3 平滑动效，与像素风
-                // 阶跃规范冲突。矮屏真需要滚动时滚动本身照常工作，只是没有回弹。
-                overscrollEffect = null,
-            )
-            .padding(
-                start = PixelShape.Spacing.lg,
-                end = PixelShape.Spacing.lg,
-                top = PixelShape.Spacing.lg,
-                // 底部与 PixelBottomBar 相邻，底栏自带 padding，此处无需再留 xxl
-                bottom = PixelShape.Spacing.lg,
-            ),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .widthIn(max = PixelShape.contentMaxWidth),
     ) {
-        // 头部：TODAY + 副标题 + streak chip（原型 home-head / home-streak）
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        // 固定标题栏：不随内容滚动出屏（TODAY + streak + 分隔线）
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = PixelShape.Spacing.lg,
+                    end = PixelShape.Spacing.lg,
+                    top = PixelShape.Spacing.lg,
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
-            PixelPageTitle(title = "TODAY", subtitle = state.subtitle)
-            StreakChip(streak = state.streak, onClick = onOpenRecord)
+            // 头部：TODAY + 副标题 + streak chip（原型 home-head / home-streak）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
+                PixelPageTitle(title = "TODAY", subtitle = state.subtitle)
+                StreakChip(streak = state.streak, onClick = onOpenRecord)
+            }
+
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+            HorizontalRule()
         }
 
-        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-        HorizontalRule()
+        // 滚动区（标题栏以下，weight 占满剩余高度）
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+        val scrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(
+                    state = scrollState,
+                    // overscrollEffect = null 关掉边缘拉伸：① 内容本就一屏可见时，滑动不再产生
+                    // 「还能往下滚」的错觉，消除滚动交互负担；② 边缘拉伸属 M3 平滑动效，与像素风
+                    // 阶跃规范冲突。矮屏真需要滚动时滚动本身照常工作，只是没有回弹。
+                    overscrollEffect = null,
+                )
+                .padding(
+                    start = PixelShape.Spacing.lg,
+                    end = PixelShape.Spacing.lg,
+                    top = PixelShape.Spacing.lg,
+                    // 底部与 PixelBottomBar 相邻，底栏自带 padding，此处无需再留 xxl
+                    bottom = PixelShape.Spacing.lg,
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
         // 角色「小健」+ 气泡（文案同源 SpeechCatalog）
@@ -673,15 +704,17 @@ private fun HomeContent(
             }
         }
     }
-    // 像素滚动条：仅在内容真的溢出时出现（一屏可见优化后典型态不溢出 → 不再画无意义的空轨道）
-    if (scrollState.maxValue > 0) {
-        PixelVerticalScrollbar(
-            scrollState = scrollState,
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .padding(vertical = PixelShape.Spacing.sm),
-        )
+        // 像素滚动条：仅在内容真的溢出时出现（一屏可见优化后典型态不溢出 → 不再画无意义的空轨道）
+        if (scrollState.maxValue > 0) {
+            PixelVerticalScrollbar(
+                scrollState = scrollState,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .padding(vertical = PixelShape.Spacing.sm),
+            )
+        }
+        }
     }
     }
 

@@ -32,6 +32,9 @@ object PixelType {
         /** 14sp：正文强调（按钮/次要标题） */
         val sm: TextUnit = 14.sp
 
+        /** 16sp：页面大标题（TODAY/RECORD/SETTINGS；英文/数字走 Press Start 2P 偶数尺寸，不破坏网格） */
+        val title: TextUnit = 16.sp
+
         /** 20sp：强调数字/标题 */
         val md: TextUnit = 20.sp
 

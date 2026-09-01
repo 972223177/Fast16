@@ -264,29 +264,52 @@ private fun SettingsContent(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(scrollState)
-            .padding(
-                start = PixelShape.Spacing.lg,
-                end = PixelShape.Spacing.lg,
-                top = PixelShape.Spacing.lg,
-                bottom = PixelShape.Spacing.xxl,
-            ),
-        horizontalAlignment = Alignment.Start,
+            .widthIn(max = PixelShape.contentMaxWidth),
     ) {
-        // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
-        PixelPageTitle(title = "SETTINGS", subtitle = "偏好与关于")
-        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-        Box(
+        // 固定标题栏：不随内容滚动出屏
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(2.dp)
-                .background(PixelColors.panel.copy(alpha = 0.6f)),
-        )
+                .padding(
+                    start = PixelShape.Spacing.lg,
+                    end = PixelShape.Spacing.lg,
+                    top = PixelShape.Spacing.lg,
+                ),
+            horizontalAlignment = Alignment.Start,
+        ) {
+            // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
+            PixelPageTitle(title = "SETTINGS", subtitle = "偏好与关于")
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(PixelColors.panel.copy(alpha = 0.6f)),
+            )
+        }
+
+        // 滚动区（标题栏以下）
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+        val scrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(
+                    start = PixelShape.Spacing.lg,
+                    end = PixelShape.Spacing.lg,
+                    top = PixelShape.Spacing.lg,
+                    bottom = PixelShape.Spacing.xxl,
+                ),
+            horizontalAlignment = Alignment.Start,
+        ) {
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
         // 设置项（原型 set-row：label 左 / value 右；均可配 → stepper 弹窗）
@@ -370,15 +393,17 @@ private fun SettingsContent(
 
         // 关于
         SettingRow(label = "关于 Fast16", value = "v0.1.0")
+        }
+        // 像素滚动条：矮屏内容被裁时提示可滚动（右上端、贯穿高度）
+        PixelVerticalScrollbar(
+            scrollState = scrollState,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .padding(vertical = PixelShape.Spacing.sm),
+        )
+        }
     }
-    // 像素滚动条：矮屏内容被裁时提示可滚动（右上端、贯穿高度）
-    PixelVerticalScrollbar(
-        scrollState = scrollState,
-        modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .fillMaxHeight()
-            .padding(vertical = PixelShape.Spacing.sm),
-    )
     }
 
     // 提醒模式选择弹窗（像素 chip，选中黄底黑字）

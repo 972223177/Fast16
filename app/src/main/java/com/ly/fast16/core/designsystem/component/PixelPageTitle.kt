@@ -31,7 +31,7 @@ fun PixelPageTitle(
         PixelTypewriterText(
             text = title,
             color = PixelColors.white,
-            fontSize = PixelType.Size.xs,
+            fontSize = PixelType.Size.title,
             digital = true,
         )
         if (subtitle != null) {

@@ -286,34 +286,57 @@ private fun RecordContent(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
-    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(
-                state = scrollState,
-                // 与 Home 一致：关掉 overscroll 边缘拉伸，避免「还能滚」的错觉
-                overscrollEffect = null,
-            )
-            .padding(
-                start = PixelShape.Spacing.lg,
-                end = PixelShape.Spacing.lg,
-                top = PixelShape.Spacing.lg,
-                // 底部与 PixelBottomBar 相邻，无需 xxl 留白
-                bottom = PixelShape.Spacing.lg,
-            ),
-        horizontalAlignment = Alignment.Start,
+            .widthIn(max = PixelShape.contentMaxWidth),
     ) {
-        // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
-        PixelPageTitle(title = "RECORD", subtitle = "统计概览 · 日历打卡")
-        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-        Box(
+        // 固定标题栏：不随内容滚动出屏
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(2.dp)
-                .background(PixelColors.panel.copy(alpha = 0.6f)),
-        )
+                .padding(
+                    start = PixelShape.Spacing.lg,
+                    end = PixelShape.Spacing.lg,
+                    top = PixelShape.Spacing.lg,
+                ),
+            horizontalAlignment = Alignment.Start,
+        ) {
+            // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
+            PixelPageTitle(title = "RECORD", subtitle = "统计概览 · 日历打卡")
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(PixelColors.panel.copy(alpha = 0.6f)),
+            )
+        }
+
+        // 滚动区（标题栏以下）
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+        val scrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(
+                    state = scrollState,
+                    // 与 Home 一致：关掉 overscroll 边缘拉伸，避免「还能滚」的错觉
+                    overscrollEffect = null,
+                )
+                .padding(
+                    start = PixelShape.Spacing.lg,
+                    end = PixelShape.Spacing.lg,
+                    top = PixelShape.Spacing.lg,
+                    // 底部与 PixelBottomBar 相邻，无需 xxl 留白
+                    bottom = PixelShape.Spacing.lg,
+                ),
+            horizontalAlignment = Alignment.Start,
+        ) {
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
         // 分区标题：统计概览
@@ -367,16 +390,18 @@ private fun RecordContent(
             onSelectDay = { onIntent(RecordIntent.TapDate(it)) },
         )
 
-    }
-    // 像素滚动条：仅在内容真的溢出时出现（统计+日历一屏可见 → 不画无意义的空轨道）
-    if (scrollState.maxValue > 0) {
-        PixelVerticalScrollbar(
-            scrollState = scrollState,
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .padding(vertical = PixelShape.Spacing.sm),
-        )
+        }
+        // 像素滚动条：仅在内容真的溢出时出现（统计+日历一屏可见 → 不画无意义的空轨道）
+        if (scrollState.maxValue > 0) {
+            PixelVerticalScrollbar(
+                scrollState = scrollState,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .padding(vertical = PixelShape.Spacing.sm),
+            )
+        }
+        }
     }
     }
 

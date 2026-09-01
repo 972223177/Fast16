@@ -19,6 +19,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,8 +31,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCard
+import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelStepper
 import com.ly.fast16.core.designsystem.component.PixelText
+import com.ly.fast16.core.designsystem.component.PixelToast
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
@@ -120,9 +125,12 @@ sealed interface CreateUiState {
     ) : CreateUiState
 }
 
-/** 新建计划一次性事件（生成成功回首页） */
+/** 新建计划一次性事件（生成成功回首页 / 失败提示） */
 sealed interface CreateEvent {
     data object Generated : CreateEvent
+
+    /** 生成失败（保存/排程异常）——Screen 层 Toast 反馈 */
+    data object Failed : CreateEvent
 }
 
 // ---------- Reducer（纯函数：候选生成 / 约束校验均无 IO、无时间源） ----------
@@ -345,8 +353,9 @@ class CreateViewModel(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e // 取消必须重抛（coroutines-best-practices §4）
         } catch (e: Exception) {
-            // 生成失败兜底：不崩溃应用（M1 记录日志，M2 补 Toast 引导）
+            // 生成失败兜底：不崩溃应用 + UI 反馈（P1）
             android.util.Log.e(TAG, "生成计划失败", e)
+            _events.send(CreateEvent.Failed)
         }
     }
 
@@ -366,6 +375,7 @@ fun CreateScreen(
 ) {
     val vm: CreateViewModel = koinViewModel()
     val state by vm.uiState.collectAsState()
+    var showFailToast by remember { mutableStateOf(false) }
 
     // 编辑模式：planId 进入时加载现有计划预填
     LaunchedEffect(planId) {
@@ -381,17 +391,28 @@ fun CreateScreen(
                     Fast16Widget().updateAll(context)
                     onBack()
                 }
+
+                CreateEvent.Failed -> showFailToast = true
             }
         }
     }
 
     when (val s = state) {
-        CreateUiState.Loading -> Unit
+        CreateUiState.Loading -> PixelLoading()
         is CreateUiState.Content -> CreateContent(
             state = s,
             onIntent = vm::onIntent,
             onBack = onBack,
             modifier = modifier,
+        )
+    }
+
+    // 生成失败轻提示
+    if (showFailToast) {
+        PixelToast(
+            text = "生成失败，请重试",
+            show = showFailToast,
+            onDismiss = { showFailToast = false },
         )
     }
 }

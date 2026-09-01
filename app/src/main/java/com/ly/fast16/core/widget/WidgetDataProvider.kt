@@ -12,7 +12,6 @@ import com.ly.fast16.domain.schedule.FastingTimer
 import com.ly.fast16.domain.stats.StreakCalculator
 import kotlinx.coroutines.flow.first
 import java.time.Duration
-import java.time.Instant
 import java.time.YearMonth
 
 /**
@@ -79,7 +78,7 @@ class WidgetDataProvider(
         val nextMeal = meals.firstOrNull { it.status != MealStatus.COMPLETED }
         val nextMealLabel = nextMeal?.let { m ->
             val name = SpeechCatalog.mealName(m.type)
-            val mealTimeStr = fmtTime(m.mealTime.toEpochMilli())
+            val mealTimeStr = Time.hhmm(m.mealTime, SystemTimeProvider.zone)
             if (m.prepMinutes > 0) {
                 // 距备餐 HH:mm（prepTime = mealTime − prepMinutes）
                 val diffMin = (Duration.between(now, m.prepTime).toMinutes()).coerceAtLeast(0)
@@ -94,18 +93,12 @@ class WidgetDataProvider(
             nextMealLabel = nextMealLabel,
             nextCheckInType = nextMeal?.type,
             streak = StreakCalculator.computeStreak(completedDays, today),
-            mealTimes = meals.associate { it.type to fmtTime(it.mealTime.toEpochMilli()) },
+            mealTimes = meals.associate { it.type to Time.hhmm(it.mealTime, SystemTimeProvider.zone) },
             windowProgress = windowProgress,
             checked = checked,
             mealCount = meals.size,
             showFasting = showFasting,
         )
-    }
-
-    /** epoch → "HH:mm"（系统时区） */
-    private fun fmtTime(epochMilli: Long): String {
-        val t = Time.timeOf(Instant.ofEpochMilli(epochMilli), SystemTimeProvider.zone)
-        return "%02d:%02d".format(t.hour, t.minute)
     }
 
     companion object {

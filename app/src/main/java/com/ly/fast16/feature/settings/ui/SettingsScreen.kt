@@ -3,6 +3,10 @@ package com.ly.fast16.feature.settings.ui
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -34,6 +39,7 @@ import androidx.lifecycle.viewModelScope
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelLoading
+import com.ly.fast16.core.designsystem.component.PixelSectionTitle
 import com.ly.fast16.core.designsystem.component.PixelStepper
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.component.PreviewPixel
@@ -185,6 +191,15 @@ fun SettingsScreen(
         ActivityResultContracts.RequestPermission(),
     ) { vm.refreshPermissions() }
 
+    // 每次回到前台刷新权限状态：覆盖「从系统设置返回」（精确闹钟授权）与外部改权限，
+    // 不依赖个别授权路径的回调（launcher 回调仅作为快速响应兜底）
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            vm.refreshPermissions()
+        }
+    }
+
     if (showOnboarding) {
         OnboardingDialog(onDismiss = { showOnboarding = false })
     }
@@ -224,9 +239,14 @@ private fun SettingsContent(
     var editing by remember { mutableStateOf<EditableSetting?>(null) }
     val context = LocalContext.current
 
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
+            .widthIn(max = PixelShape.contentMaxWidth)
             .verticalScroll(rememberScrollState())
             .padding(PixelShape.Spacing.lg),
         horizontalAlignment = Alignment.Start,
@@ -250,6 +270,12 @@ private fun SettingsContent(
         SettingRow(label = "早餐默认备餐", value = "${state.defaultPrepBreakfastMinutes} 分钟", onClick = { editing = EditableSetting.PREP_BREAKFAST })
         SettingRow(label = "午餐默认备餐", value = "${state.defaultPrepLunchMinutes} 分钟", onClick = { editing = EditableSetting.PREP_LUNCH })
         SettingRow(label = "晚餐默认备餐", value = "${state.defaultPrepDinnerMinutes} 分钟", onClick = { editing = EditableSetting.PREP_DINNER })
+
+        // 分区：提醒与权限
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
+        PixelSectionTitle(text = "提醒与权限")
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+
         // 提醒模式（可配：点击弹窗 4 选，写 SettingsStore）
         SettingRow(
             label = "提醒模式",
@@ -285,6 +311,10 @@ private fun SettingsContent(
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
+        // 分区：关于
+        PixelSectionTitle(text = "关于")
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+
         // 查看 8:16 说明（可点，带 ▶）
         Box(
             modifier = Modifier
@@ -308,6 +338,7 @@ private fun SettingsContent(
 
         // 关于
         SettingRow(label = "关于 Fast16", value = "v0.1.0")
+    }
     }
 
     // 提醒模式选择弹窗（像素 chip，选中黄底黑字）

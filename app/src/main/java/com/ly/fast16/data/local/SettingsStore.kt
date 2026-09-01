@@ -32,6 +32,8 @@ data class AppSettings(
     val onboardingSeen: Boolean,
     /** 字体模式（默认系统字体，可切换像素风） */
     val fontMode: FontMode = FontMode.SYSTEM,
+    /** 是否已同意隐私政策与用户协议（首次启动弹窗；国内商店上架合规，未同意不进入主界面） */
+    val privacyAccepted: Boolean = false,
 )
 
 /**
@@ -50,6 +52,7 @@ class SettingsStore(private val context: Context) {
         val WIDGET_SHOW_FASTING = booleanPreferencesKey("widget_show_fasting")
         val ONBOARDING_SEEN = booleanPreferencesKey("onboarding_seen")
         val FONT_MODE = stringPreferencesKey("font_mode")
+        val PRIVACY_ACCEPTED = booleanPreferencesKey("privacy_accepted")
     }
 
     /** 偏好流（缺省值对齐 §1.5） */
@@ -68,6 +71,7 @@ class SettingsStore(private val context: Context) {
             fontMode = p[Keys.FONT_MODE]
                 ?.let { runCatching { FontMode.valueOf(it) }.getOrNull() }
                 ?: FontMode.SYSTEM,
+            privacyAccepted = p[Keys.PRIVACY_ACCEPTED] ?: false,
         )
     }
 
@@ -89,6 +93,8 @@ class SettingsStore(private val context: Context) {
     suspend fun setOnboardingSeen(seen: Boolean) = edit { it[Keys.ONBOARDING_SEEN] = seen }
 
     suspend fun setFontMode(mode: FontMode) = edit { it[Keys.FONT_MODE] = mode.name }
+
+    suspend fun setPrivacyAccepted(accepted: Boolean) = edit { it[Keys.PRIVACY_ACCEPTED] = accepted }
 
     private suspend fun edit(block: (MutablePreferences) -> Unit) {
         context.settingsDataStore.edit(block)

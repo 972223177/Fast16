@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.navigation.Fast16NavHost
 import com.ly.fast16.feature.onboarding.ui.OnboardingRoot
+import com.ly.fast16.feature.onboarding.ui.PrivacyConsentRoot
 import org.koin.compose.koinInject
 
 class MainActivity : ComponentActivity() {
@@ -23,9 +24,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             // 注入 SettingsStore：PixelTheme 据此切换字体模式（像素风 / 系统默认）
             PixelTheme(settingsStore = koinInject()) {
-                // 首启引导 overlay（非路由，onboarding_seen 控制；关闭后申请通知权限）
-                OnboardingRoot {
-                    Fast16NavHost()
+                // 隐私同意 gate（非路由，privacy_accepted 控制；未同意不进入主界面，国内商店合规）
+                // 同意后进入：首启引导 overlay（onboarding_seen 控制；关闭后申请通知权限）
+                PrivacyConsentRoot {
+                    OnboardingRoot {
+                        Fast16NavHost()
+                    }
                 }
             }
         }

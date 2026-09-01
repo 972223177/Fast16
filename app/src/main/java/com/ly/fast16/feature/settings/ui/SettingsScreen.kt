@@ -39,6 +39,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ly.fast16.core.designsystem.component.LegalAssets
+import com.ly.fast16.core.designsystem.component.LegalDialog
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelLoading
@@ -258,6 +260,8 @@ private fun SettingsContent(
     var showReminderDialog by remember { mutableStateOf(false) }
     var showFontDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<EditableSetting?>(null) }
+    var showPrivacy by remember { mutableStateOf(false) }
+    var showAgreement by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Box(
@@ -370,25 +374,12 @@ private fun SettingsContent(
         PixelSectionTitle(text = "关于")
         Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
 
-        // 查看 8:16 说明（可点，带 ▶）
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(PixelColors.panel)
-                .border(BorderStroke(PixelShape.borderWidth, Color.Black))
-                .clickable(onClick = onShowOnboarding)
-                .padding(PixelShape.Spacing.md),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PixelText(text = "查看 8:16 说明", color = PixelColors.white, fontSize = PixelType.Size.sm)
-                PixelText(text = "▶", color = PixelColors.gray, fontSize = PixelType.Size.xs)
-            }
-        }
-
+        // 关于区入口行（可点，带 ▶）
+        SettingsActionRow(label = "查看 8:16 说明", onClick = onShowOnboarding)
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+        SettingsActionRow(label = "隐私政策", onClick = { showPrivacy = true })
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+        SettingsActionRow(label = "用户协议", onClick = { showAgreement = true })
         Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
 
         // 关于
@@ -503,6 +494,22 @@ private fun SettingsContent(
             onClose = { editing = null },
         )
     }
+
+    // 合规文本弹窗（隐私政策 / 用户协议，本地 assets 展示，无网络权限）
+    if (showPrivacy) {
+        LegalDialog(
+            title = "隐私政策",
+            assetPath = LegalAssets.PRIVACY_POLICY,
+            onDismiss = { showPrivacy = false },
+        )
+    }
+    if (showAgreement) {
+        LegalDialog(
+            title = "用户协议",
+            assetPath = LegalAssets.USER_AGREEMENT,
+            onDismiss = { showAgreement = false },
+        )
+    }
 }
 
 /**
@@ -601,6 +608,28 @@ private fun SettingRow(label: String, value: String, onClick: (() -> Unit)? = nu
     ) {
         PixelText(text = label, color = PixelColors.white, fontSize = PixelType.Size.sm)
         PixelText(text = value, color = PixelColors.gray, fontSize = PixelType.Size.xs, digital = true)
+    }
+}
+
+/** 关于区入口行（面板底黑边 + 右侧 ▶；与设置行同构的导航型行） */
+@Composable
+private fun SettingsActionRow(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PixelColors.panel)
+            .border(BorderStroke(PixelShape.borderWidth, Color.Black))
+            .clickable(onClick = onClick)
+            .padding(PixelShape.Spacing.md),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PixelText(text = label, color = PixelColors.white, fontSize = PixelType.Size.sm)
+            PixelText(text = "▶", color = PixelColors.gray, fontSize = PixelType.Size.xs)
+        }
     }
 }
 

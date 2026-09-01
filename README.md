@@ -54,6 +54,17 @@
 
 > 注：上述软著信息供登记申请参考，最终以《计算机软件著作权登记申请表》填报内容为准。
 
+### 合规文本维护
+
+隐私政策 / 用户协议的**唯一事实源**是 `app/src/main/assets/*.txt`（App 内弹窗展示）；
+商店后台要求的公开 URL 页面 `docs/*.html` 由脚本从 txt 生成，二者内容保持一致：
+
+```bash
+./scripts/sync-legal.sh
+```
+
+修改文案只需改 txt，然后运行脚本重新生成 HTML 即可。
+
 ## 致谢
 
 - [Press Start 2P](https://github.com/google/fonts) — SIL OFL 1.1

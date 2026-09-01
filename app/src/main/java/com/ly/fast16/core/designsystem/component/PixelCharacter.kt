@@ -30,6 +30,7 @@ fun PixelCharacter(
     state: CharacterState,
     modifier: Modifier = Modifier,
     scale: Float = 4f,
+    contentDescription: String = "小健",
 ) {
     var frame by remember { mutableIntStateOf(0) }
     LaunchedEffect(state) {
@@ -51,7 +52,11 @@ fun PixelCharacter(
     val height = (20 * scale).dp
 
     Box(modifier = modifier.size(width, height)) {
-        PixelSprite(rows = rows, modifier = Modifier.matchParentSize())
+        PixelSprite(
+            rows = rows,
+            modifier = Modifier.matchParentSize(),
+            contentDescription = contentDescription,
+        )
         // 道具：align 相对定位（相对角色四边，随 Box 缩放保持比例）+ 尺寸按 scale 等比例，
         // 不依赖绝对屏幕坐标 → 任意 density/屏幕尺寸不错位、不变形（compat §5 大屏自适应）
         when (state) {

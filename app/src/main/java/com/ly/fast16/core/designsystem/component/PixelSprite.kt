@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
@@ -26,12 +28,20 @@ fun PixelSprite(
     rows: List<String>,
     modifier: Modifier = Modifier,
     palette: Map<Char, Color> = PixelSpritePalette.character,
+    contentDescription: String? = null,
 ) {
     val cols = rows.maxOfOrNull { it.length } ?: 0
     val rowCount = rows.size
     if (cols == 0 || rowCount == 0) return
 
-    Canvas(modifier = modifier) {
+    Canvas(modifier = modifier.then(
+        // P2：无障碍描述（像素图标无文本，辅助功能朗读用）
+        if (contentDescription != null) {
+            Modifier.semantics { this.contentDescription = contentDescription }
+        } else {
+            Modifier
+        },
+    )) {
         val cellW = size.width / cols
         val cellH = size.height / rowCount
         rows.forEachIndexed { y, row ->

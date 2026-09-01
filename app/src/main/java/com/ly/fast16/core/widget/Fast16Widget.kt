@@ -117,7 +117,7 @@ private fun Fast16WidgetContent(data: WidgetData) {
 
             Spacer(modifier = GlanceModifier.height(10.dp))
 
-            // 三餐状态点（已打卡绿 / 未打卡灰；IN-01：无计划显示空态）
+            // 三餐状态点（已打卡绿 / 未打卡灰；P0：点击各自打卡对应餐）
             if (data.hasPlan) {
                 Row(modifier = GlanceModifier.fillMaxWidth()) {
                     MealType.entries.forEach { type ->
@@ -129,7 +129,12 @@ private fun Fast16WidgetContent(data: WidgetData) {
                             Box(
                                 modifier = GlanceModifier
                                     .size(10.dp)
-                                    .background(if (checked) C_GREEN else C_GRAY),
+                                    .background(if (checked) C_GREEN else C_GRAY)
+                                    .clickable(
+                                        onClick = actionRunCallback<WidgetCheckInCallback>(
+                                            actionParametersOf(WidgetCheckInCallback.KEY_TYPE to type.name),
+                                        ),
+                                    ),
                             ) { }
                             Spacer(modifier = GlanceModifier.height(2.dp))
                             Text(
@@ -148,25 +153,8 @@ private fun Fast16WidgetContent(data: WidgetData) {
 
             Spacer(modifier = GlanceModifier.height(10.dp))
 
-            // 操作：打卡午餐 + 打开 App
+            // 操作：打开 App（三餐图标各自打卡）
             Row(modifier = GlanceModifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    modifier = GlanceModifier
-                        .background(C_GREEN)
-                        .cornerRadius(4.dp)
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                        .clickable(
-                            onClick = actionRunCallback<WidgetCheckInCallback>(
-                                actionParametersOf(WidgetCheckInCallback.KEY_TYPE to MealType.LUNCH.name),
-                            ),
-                        ),
-                ) {
-                    Text(
-                        text = "打卡午餐",
-                        style = TextStyle(color = C_BG, fontSize = 10.sp),
-                    )
-                }
-                Spacer(modifier = GlanceModifier.width(8.dp))
                 Box(
                     modifier = GlanceModifier
                         .background(C_BG)

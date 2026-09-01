@@ -15,11 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelMotion
 import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
+import com.ly.fast16.core.notification.VibratorCompat
 import kotlinx.coroutines.delay
 
 /**
@@ -33,10 +35,15 @@ fun PixelToast(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     durationMs: Long = 1600,
+    vibrate: Boolean = true,
 ) {
+    val context = LocalContext.current
+    val vibrator = remember { VibratorCompat(context) }
     var visible by remember { mutableStateOf(show) }
     LaunchedEffect(show) {
         if (show) {
+            // P2：轻提示伴随 80ms 轻震（原型 navigator.vibrate(80)）
+            if (vibrate) vibrator.buzz()
             visible = true
             delay(durationMs)
             visible = false

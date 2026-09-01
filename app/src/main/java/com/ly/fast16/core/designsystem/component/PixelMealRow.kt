@@ -49,7 +49,11 @@ fun PixelMealRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 碗图标（8×8 → 34×34）
-        PixelSprite(rows = ICON_BOWL, modifier = Modifier.size(34.dp))
+        PixelSprite(
+            rows = ICON_BOWL,
+            modifier = Modifier.size(34.dp),
+            contentDescription = "$name 图标",
+        )
 
         Spacer(modifier = Modifier.width(PixelShape.Spacing.md))
 

@@ -79,7 +79,6 @@ sealed interface SettingsIntent {
     data class SetWindowHours(val hours: Int) : SettingsIntent
     data class SetMinMealGap(val minutes: Int) : SettingsIntent
     data class SetDinnerBuffer(val minutes: Int) : SettingsIntent
-    data class SetPrepBreakfast(val minutes: Int) : SettingsIntent
     data class SetPrepLunch(val minutes: Int) : SettingsIntent
     data class SetPrepDinner(val minutes: Int) : SettingsIntent
 
@@ -97,7 +96,6 @@ sealed interface SettingsUiState {
         val windowHours: Int,
         val minMealGapMinutes: Int,
         val dinnerBufferMinutes: Int,
-        val defaultPrepBreakfastMinutes: Int,
         val defaultPrepLunchMinutes: Int,
         val defaultPrepDinnerMinutes: Int,
         val defaultReminderMode: String,
@@ -123,7 +121,6 @@ object SettingsReducer {
             is SettingsIntent.SetWindowHours,
             is SettingsIntent.SetMinMealGap,
             is SettingsIntent.SetDinnerBuffer,
-            is SettingsIntent.SetPrepBreakfast,
             is SettingsIntent.SetPrepLunch,
             is SettingsIntent.SetPrepDinner,
             is SettingsIntent.SetFontMode,
@@ -161,7 +158,6 @@ class SettingsViewModel(
         windowHours = s.windowHours,
         minMealGapMinutes = s.minMealGapMinutes,
         dinnerBufferMinutes = s.dinnerBufferMinutes,
-        defaultPrepBreakfastMinutes = s.defaultPrepBreakfastMinutes,
         defaultPrepLunchMinutes = s.defaultPrepLunchMinutes,
         defaultPrepDinnerMinutes = s.defaultPrepDinnerMinutes,
         defaultReminderMode = s.defaultReminderMode.name,
@@ -179,7 +175,6 @@ class SettingsViewModel(
                 is SettingsIntent.SetWindowHours -> settingsStore.setWindowHours(intent.hours)
                 is SettingsIntent.SetMinMealGap -> settingsStore.setMinMealGapMinutes(intent.minutes)
                 is SettingsIntent.SetDinnerBuffer -> settingsStore.setDinnerBufferMinutes(intent.minutes)
-                is SettingsIntent.SetPrepBreakfast -> settingsStore.setDefaultPrepBreakfastMinutes(intent.minutes)
                 is SettingsIntent.SetPrepLunch -> settingsStore.setDefaultPrepLunchMinutes(intent.minutes)
                 is SettingsIntent.SetPrepDinner -> settingsStore.setDefaultPrepDinnerMinutes(intent.minutes)
                 is SettingsIntent.SetFontMode -> settingsStore.setFontMode(intent.mode)
@@ -248,7 +243,7 @@ fun SettingsScreen(
 }
 
 /** 可编辑数值设置项（stepper 弹窗用） */
-private enum class EditableSetting { WINDOW, GAP, BUFFER, PREP_BREAKFAST, PREP_LUNCH, PREP_DINNER }
+private enum class EditableSetting { WINDOW, GAP, BUFFER, PREP_LUNCH, PREP_DINNER }
 
 @Composable
 private fun SettingsContent(
@@ -298,7 +293,6 @@ private fun SettingsContent(
         SettingRow(label = "进食窗口", value = "${state.windowHours} 小时", onClick = { editing = EditableSetting.WINDOW })
         SettingRow(label = "餐间隔下限", value = "${state.minMealGapMinutes} 分钟", onClick = { editing = EditableSetting.GAP })
         SettingRow(label = "晚餐距窗口结束缓冲", value = "${state.dinnerBufferMinutes} 分钟", onClick = { editing = EditableSetting.BUFFER })
-        SettingRow(label = "早餐默认备餐", value = "${state.defaultPrepBreakfastMinutes} 分钟", onClick = { editing = EditableSetting.PREP_BREAKFAST })
         SettingRow(label = "午餐默认备餐", value = "${state.defaultPrepLunchMinutes} 分钟", onClick = { editing = EditableSetting.PREP_LUNCH })
         SettingRow(label = "晚餐默认备餐", value = "${state.defaultPrepDinnerMinutes} 分钟", onClick = { editing = EditableSetting.PREP_DINNER })
 
@@ -527,7 +521,6 @@ private fun numericTitle(e: EditableSetting): String = when (e) {
     EditableSetting.WINDOW -> "进食窗口（小时）"
     EditableSetting.GAP -> "餐间隔下限（分钟）"
     EditableSetting.BUFFER -> "晚餐距窗口结束（分钟）"
-    EditableSetting.PREP_BREAKFAST -> "早餐默认备餐（分钟）"
     EditableSetting.PREP_LUNCH -> "午餐默认备餐（分钟）"
     EditableSetting.PREP_DINNER -> "晚餐默认备餐（分钟）"
 }
@@ -536,7 +529,6 @@ private fun numericValue(state: SettingsUiState.Content, e: EditableSetting): In
     EditableSetting.WINDOW -> state.windowHours
     EditableSetting.GAP -> state.minMealGapMinutes
     EditableSetting.BUFFER -> state.dinnerBufferMinutes
-    EditableSetting.PREP_BREAKFAST -> state.defaultPrepBreakfastMinutes
     EditableSetting.PREP_LUNCH -> state.defaultPrepLunchMinutes
     EditableSetting.PREP_DINNER -> state.defaultPrepDinnerMinutes
 }
@@ -548,7 +540,6 @@ private fun numericRange(e: EditableSetting): IntRange = when (e) {
     EditableSetting.WINDOW -> 4..16
     EditableSetting.GAP -> 60..240
     EditableSetting.BUFFER -> 0..60
-    EditableSetting.PREP_BREAKFAST,
     EditableSetting.PREP_LUNCH,
     EditableSetting.PREP_DINNER,
     -> 0..120
@@ -564,7 +555,6 @@ private fun numericIntent(e: EditableSetting, v: Int): SettingsIntent = when (e)
     EditableSetting.WINDOW -> SettingsIntent.SetWindowHours(v)
     EditableSetting.GAP -> SettingsIntent.SetMinMealGap(v)
     EditableSetting.BUFFER -> SettingsIntent.SetDinnerBuffer(v)
-    EditableSetting.PREP_BREAKFAST -> SettingsIntent.SetPrepBreakfast(v)
     EditableSetting.PREP_LUNCH -> SettingsIntent.SetPrepLunch(v)
     EditableSetting.PREP_DINNER -> SettingsIntent.SetPrepDinner(v)
 }
@@ -606,7 +596,6 @@ private fun SettingsScreenPreview() {
                 windowHours = 8,
                 minMealGapMinutes = 180,
                 dinnerBufferMinutes = 30,
-                defaultPrepBreakfastMinutes = 0,
                 defaultPrepLunchMinutes = 30,
                 defaultPrepDinnerMinutes = 45,
                 defaultReminderMode = "NOTIFY",

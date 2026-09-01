@@ -755,7 +755,7 @@ private fun CreateScreenPreview() {
             state = CreateReducer.initial(
                 settings = AppSettings(
                     windowHours = 8, minMealGapMinutes = 180, dinnerBufferMinutes = 30,
-                    defaultPrepLunchMinutes = 30, defaultPrepDinnerMinutes = 45, defaultPrepBreakfastMinutes = 0,
+                    defaultPrepLunchMinutes = 30, defaultPrepDinnerMinutes = 45,
                     defaultReminderMode = ReminderMode.NOTIFY,
                     widgetShowFasting = true, onboardingSeen = true,
                 ),

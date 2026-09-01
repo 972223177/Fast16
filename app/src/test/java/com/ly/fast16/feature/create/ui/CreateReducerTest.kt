@@ -26,7 +26,6 @@ class CreateReducerTest {
         dinnerBufferMinutes = 30,
         defaultPrepLunchMinutes = 30,
         defaultPrepDinnerMinutes = 45,
-        defaultPrepBreakfastMinutes = 0,
         defaultReminderMode = ReminderMode.NOTIFY,
         widgetShowFasting = true,
         onboardingSeen = true,

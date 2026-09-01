@@ -81,12 +81,3 @@ data class Meal(
         get() = mealTime.minusSeconds(prepMinutes * 60L)
 }
 
-/**
- * 打卡记录：对某日某餐「已完成进食」的确认。
- * 与计划解耦——无计划也能补打卡。
- */
-data class CheckIn(
-    val date: LocalDate,
-    val mealType: MealType,
-    val checkedAt: Instant,
-)

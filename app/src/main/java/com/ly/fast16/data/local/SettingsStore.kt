@@ -27,7 +27,6 @@ data class AppSettings(
     val dinnerBufferMinutes: Int,
     val defaultPrepLunchMinutes: Int,
     val defaultPrepDinnerMinutes: Int,
-    val defaultPrepBreakfastMinutes: Int,
     val defaultReminderMode: ReminderMode,
     val widgetShowFasting: Boolean,
     val onboardingSeen: Boolean,
@@ -47,7 +46,6 @@ class SettingsStore(private val context: Context) {
         val DINNER_BUFFER_MINUTES = intPreferencesKey("dinner_buffer_minutes")
         val DEFAULT_PREP_LUNCH_MINUTES = intPreferencesKey("default_prep_lunch_minutes")
         val DEFAULT_PREP_DINNER_MINUTES = intPreferencesKey("default_prep_dinner_minutes")
-        val DEFAULT_PREP_BREAKFAST_MINUTES = intPreferencesKey("default_prep_breakfast_minutes")
         val DEFAULT_REMINDER_MODE = stringPreferencesKey("default_reminder_mode")
         val WIDGET_SHOW_FASTING = booleanPreferencesKey("widget_show_fasting")
         val ONBOARDING_SEEN = booleanPreferencesKey("onboarding_seen")
@@ -62,7 +60,6 @@ class SettingsStore(private val context: Context) {
             dinnerBufferMinutes = p[Keys.DINNER_BUFFER_MINUTES] ?: 30,
             defaultPrepLunchMinutes = p[Keys.DEFAULT_PREP_LUNCH_MINUTES] ?: 30,
             defaultPrepDinnerMinutes = p[Keys.DEFAULT_PREP_DINNER_MINUTES] ?: 45,
-            defaultPrepBreakfastMinutes = p[Keys.DEFAULT_PREP_BREAKFAST_MINUTES] ?: 0,
             defaultReminderMode = p[Keys.DEFAULT_REMINDER_MODE]
                 ?.let { runCatching { ReminderMode.valueOf(it) }.getOrNull() }
                 ?: ReminderMode.NOTIFY,
@@ -86,13 +83,8 @@ class SettingsStore(private val context: Context) {
     suspend fun setDefaultPrepDinnerMinutes(minutes: Int) =
         edit { it[Keys.DEFAULT_PREP_DINNER_MINUTES] = minutes }
 
-    suspend fun setDefaultPrepBreakfastMinutes(minutes: Int) =
-        edit { it[Keys.DEFAULT_PREP_BREAKFAST_MINUTES] = minutes }
-
     suspend fun setDefaultReminderMode(mode: ReminderMode) =
         edit { it[Keys.DEFAULT_REMINDER_MODE] = mode.name }
-
-    suspend fun setWidgetShowFasting(show: Boolean) = edit { it[Keys.WIDGET_SHOW_FASTING] = show }
 
     suspend fun setOnboardingSeen(seen: Boolean) = edit { it[Keys.ONBOARDING_SEEN] = seen }
 

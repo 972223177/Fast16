@@ -17,8 +17,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,24 +33,32 @@ import androidx.lifecycle.viewModelScope
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCalendar
 import com.ly.fast16.core.designsystem.component.PixelCard
+import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
 import com.ly.fast16.core.designsystem.component.PixelStatBars
 import com.ly.fast16.core.designsystem.component.PixelText
+import com.ly.fast16.core.designsystem.component.PixelToast
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
 import com.ly.fast16.core.device.SystemTimeProvider
+import com.ly.fast16.core.scheduling.PlanScheduler
+import com.ly.fast16.domain.model.Meal
+import com.ly.fast16.domain.model.MealPlan
 import com.ly.fast16.domain.model.MealType
 import com.ly.fast16.domain.repository.CheckInRepository
+import com.ly.fast16.domain.repository.PlanRepository
 import com.ly.fast16.domain.stats.StreakCalculator
 import com.ly.fast16.domain.usecase.CheckInUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -56,11 +68,12 @@ import java.time.YearMonth
 
 // ---------- Intent ----------
 
-/** 记录页用户意图（切月 / 点日期 / 补打卡） */
+/** 记录页用户意图（切月 / 点日期 / 补打卡 / 删除计划） */
 sealed interface RecordIntent {
     data class SwitchMonth(val delta: Int) : RecordIntent
     data class TapDate(val date: LocalDate?) : RecordIntent
     data class BackfillCheckIn(val mealType: MealType) : RecordIntent
+    data object DeletePlan : RecordIntent
 }
 
 // ---------- State ----------
@@ -84,16 +97,22 @@ sealed interface RecordUiState {
         val weekBars: List<Int> = emptyList(),
         /** 选中日已打卡集合（详情补打卡） */
         val selectedChecked: Set<MealType> = emptySet(),
+        /** 选中日是否有就餐计划（详情显示编辑/删除入口） */
+        val hasPlanOnSelected: Boolean = false,
+        /** 选中日计划 id（编辑 / 删除用；无计划为 -1） */
+        val selectedPlanId: Long = -1L,
         val today: LocalDate,
     ) : RecordUiState
 }
 
 // ---------- ViewModel ----------
 
-/** 记录页 ViewModel：订阅当月打卡流 → 统计 + 月历 + 补打卡 */
+/** 记录页 ViewModel：订阅当月打卡流 → 统计 + 月历 + 补打卡 + 计划删除 */
 class RecordViewModel(
     private val checkInRepository: CheckInRepository,
     private val checkInUseCase: CheckInUseCase,
+    private val planRepository: PlanRepository,
+    private val planScheduler: PlanScheduler,
     private val clock: Clock,
 ) : ViewModel() {
 
@@ -103,14 +122,21 @@ class RecordViewModel(
     private val _uiState = MutableStateFlow<RecordUiState>(RecordUiState.Loading)
     val uiState: StateFlow<RecordUiState> = _uiState.asStateFlow()
 
+    /** 删除计划成功轻提示 */
+    private val _toast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = _toast.asStateFlow()
+
     init {
         viewModelScope.launch {
             combine(
                 monthFlow.flatMapLatest { checkInRepository.watchMonth(it) },
                 monthFlow,
                 selectedFlow,
-            ) { checked, month, selected ->
-                buildContent(checked, month, selected)
+                selectedFlow.flatMapLatest { date ->
+                    if (date == null) flowOf(null) else planRepository.watchPlanByDate(date)
+                },
+            ) { checked, month, selected, planPair ->
+                buildContent(checked, month, selected, planPair)
             }.collect { _uiState.value = it }
         }
     }
@@ -123,14 +149,29 @@ class RecordViewModel(
                 val date = selectedFlow.value ?: return@launch
                 checkInUseCase.checkIn(date, intent.mealType, clock.instant())
             }
+
+            RecordIntent.DeletePlan -> viewModelScope.launch {
+                val date = selectedFlow.value ?: return@launch
+                val plan = planRepository.watchPlanByDate(date).first()?.first ?: return@launch
+                // 删除计划 + 撤销全部排程闹钟（打卡记录独立保留，与计划解耦）
+                planRepository.deletePlan(plan.id)
+                planScheduler.cancel(plan.id)
+                selectedFlow.value = null
+                _toast.value = "已删除当日计划，提醒已撤销"
+            }
         }
     }
 
-    /** 纯派生：连续天数 / 本月/周完成率 / 近 7 天柱状图 / 选中日打卡集 */
+    fun consumeToast() {
+        _toast.value = null
+    }
+
+    /** 纯派生：连续天数 / 本月/周完成率 / 近 7 天柱状图 / 选中日打卡集 + 计划存在性 */
     private fun buildContent(
         checked: Map<LocalDate, Set<MealType>>,
         month: YearMonth,
         selected: LocalDate?,
+        planPair: Pair<MealPlan, List<Meal>>?,
     ): RecordUiState.Content {
         val today = SystemTimeProvider.today()
         val completedDays = checked.filterValues { it.size >= 3 }.keys
@@ -153,6 +194,8 @@ class RecordViewModel(
             weekRate = weekRate,
             weekBars = weekBars,
             selectedChecked = selected?.let { checked[it].orEmpty() } ?: emptySet(),
+            hasPlanOnSelected = planPair != null,
+            selectedPlanId = planPair?.first?.id ?: -1L,
             today = today,
         )
     }
@@ -161,13 +204,38 @@ class RecordViewModel(
 // ---------- Screen ----------
 
 @Composable
-fun RecordScreen(modifier: Modifier = Modifier) {
+fun RecordScreen(
+    modifier: Modifier = Modifier,
+    onEditPlan: (Long) -> Unit = {},
+) {
     val vm: RecordViewModel = koinViewModel()
     val state by vm.uiState.collectAsState()
+    val toastText by vm.toast.collectAsState()
+    var showToast by remember { mutableStateOf(false) }
+
+    LaunchedEffect(toastText) {
+        if (toastText != null) {
+            showToast = true
+        }
+    }
 
     when (val s = state) {
         RecordUiState.Loading -> Unit
-        is RecordUiState.Content -> RecordContent(state = s, onIntent = vm::onIntent, modifier = modifier)
+        is RecordUiState.Content -> RecordContent(
+            state = s,
+            onIntent = vm::onIntent,
+            onEditPlan = onEditPlan,
+            modifier = modifier,
+        )
+    }
+
+    // 删除成功轻提示
+    if (toastText != null) {
+        PixelToast(
+            text = toastText.orEmpty(),
+            show = showToast,
+            onDismiss = { showToast = false; vm.consumeToast() },
+        )
     }
 }
 
@@ -175,8 +243,10 @@ fun RecordScreen(modifier: Modifier = Modifier) {
 private fun RecordContent(
     state: RecordUiState.Content,
     onIntent: (RecordIntent) -> Unit,
+    onEditPlan: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -281,7 +351,65 @@ private fun RecordContent(
                             )
                         }
                     }
+
+                    // 计划管理区（该日有计划时：编辑 / 删除）
+                    if (state.hasPlanOnSelected) {
+                        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.sm),
+                        ) {
+                            PixelButton(
+                                text = "编辑计划",
+                                onClick = { onEditPlan(state.selectedPlanId) },
+                                primary = false,
+                                modifier = Modifier.weight(1f),
+                            )
+                            // 删除：红色小按钮 → 确认弹窗
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(PixelColors.red, PixelShape.stair)
+                                    .border(BorderStroke(PixelShape.borderWidth, Color.Black), PixelShape.stair)
+                                    .clickable { showDeleteConfirm = true }
+                                    .padding(horizontal = PixelShape.Spacing.md, vertical = PixelShape.Spacing.sm),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                PixelText(text = "删除计划", color = PixelColors.bg, fontSize = PixelType.Size.xs)
+                            }
+                        }
+                    }
                 }
+            }
+        }
+    }
+
+    // 删除计划确认（PixelDialog）
+    if (showDeleteConfirm) {
+        PixelDialog(onDismiss = { showDeleteConfirm = false }, title = "删除今日计划？") {
+            Column {
+                PixelText(
+                    text = "删除后当日提醒将撤销，已打卡记录保留。",
+                    color = PixelColors.gray,
+                    fontSize = PixelType.Size.xs,
+                )
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+                PixelButton(
+                    text = "确认删除",
+                    onClick = {
+                        showDeleteConfirm = false
+                        onIntent(RecordIntent.DeletePlan)
+                    },
+                    primary = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                PixelButton(
+                    text = "取消",
+                    onClick = { showDeleteConfirm = false },
+                    primary = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
@@ -335,6 +463,7 @@ private fun RecordScreenPreview() {
                 today = LocalDate.of(2026, 8, 31),
             ),
             onIntent = {},
+            onEditPlan = {},
         )
     }
 }

@@ -26,6 +26,14 @@ interface MealPlanDao {
 
     @Query("DELETE FROM meal_plans WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    /** 今日起（含）所有 ACTIVE 计划（自愈重排 rescheduleAll 用；status=0 = ACTIVE） */
+    @Query("SELECT * FROM meal_plans WHERE date >= :date AND status = 0 ORDER BY date ASC")
+    suspend fun getActiveFrom(date: String): List<MealPlanEntity>
+
+    /** 按 id 取计划（Create 编辑模式预填用） */
+    @Query("SELECT * FROM meal_plans WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): MealPlanEntity?
 }
 
 /**
@@ -51,12 +59,27 @@ interface MealDao {
     @Upsert
     suspend fun upsertAll(meals: List<MealEntity>)
 
+    /** 删除某计划全部餐次（savePlan 覆盖前先删，防同日叠加残留旧行） */
+    @Query("DELETE FROM meals WHERE plan_id = :planId")
+    suspend fun deleteByPlan(planId: Long)
+
     @Query("UPDATE meals SET status = :status WHERE id = :id")
     suspend fun updateStatus(id: Long, status: Int)
 
     /** 按 id 取单餐（闹钟触发 / 通知打卡解析用） */
     @Query("SELECT * FROM meals WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): MealEntity?
+
+    /** 今日起（含）ACTIVE 计划全部餐次（自愈重排用，join plan 过滤 date + status） */
+    @Query(
+        """
+        SELECT meals.* FROM meals
+        INNER JOIN meal_plans ON meals.plan_id = meal_plans.id
+        WHERE meal_plans.date >= :date AND meal_plans.status = 0
+        ORDER BY meals.meal_time_epoch ASC
+        """,
+    )
+    suspend fun getByDateFrom(date: String): List<MealEntity>
 }
 
 /**

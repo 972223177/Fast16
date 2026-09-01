@@ -53,6 +53,8 @@ class CheckInUseCaseTest {
         }
 
         override suspend fun getMealById(id: Long): Meal? = meals.firstOrNull { it.id == id }
+        override suspend fun getPlanById(planId: Long): Pair<MealPlan, List<Meal>>? = null
+        override suspend fun getActivePlansFrom(date: LocalDate): List<Pair<MealPlan, List<Meal>>> = emptyList()
     }
 
     private fun meal(id: Long, type: MealType) = Meal(

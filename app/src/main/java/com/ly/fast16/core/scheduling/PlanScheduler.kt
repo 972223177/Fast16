@@ -4,12 +4,15 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.receiver.AlarmReceiver
 import com.ly.fast16.core.system.ExactAlarmGate
 import com.ly.fast16.domain.model.Meal
 import com.ly.fast16.domain.model.MealPhase
 import com.ly.fast16.domain.model.MealPlan
 import com.ly.fast16.domain.model.MealType
+import com.ly.fast16.domain.repository.PlanRepository
+import kotlinx.coroutines.runBlocking
 
 /**
  * 闹钟 requestCode 契约（可测、cancel 可遍历撤销）：
@@ -40,11 +43,22 @@ object AlarmRequestCodes {
     private fun slot(mealType: MealType, phase: MealPhase): Int =
         mealType.ordinal * 2 + if (phase == MealPhase.PREP) 0 else 1
 
-    fun of(planId: Long, mealType: MealType, phase: MealPhase): Int =
-        (planId * 10L + slot(mealType, phase)).toInt()
+    /** requestCode 契约上限：`id * 10 + slot(0..5)` 必须落在 Int 正区间（防溢出破坏 cancel 遍历） */
+    private fun requireCodeRange(id: Long) {
+        require(id < Int.MAX_VALUE / 10L) {
+            "id $id 超出闹钟 requestCode 契约上限（Int.MAX_VALUE/10 ≈ 2.1 亿）"
+        }
+    }
 
-    fun notificationOf(mealId: Long, mealType: MealType, phase: MealPhase): Int =
-        (mealId * 10L + slot(mealType, phase)).toInt()
+    fun of(planId: Long, mealType: MealType, phase: MealPhase): Int {
+        requireCodeRange(planId)
+        return (planId * 10L + slot(mealType, phase)).toInt()
+    }
+
+    fun notificationOf(mealId: Long, mealType: MealType, phase: MealPhase): Int {
+        requireCodeRange(mealId)
+        return (mealId * 10L + slot(mealType, phase)).toInt()
+    }
 }
 
 /**
@@ -55,11 +69,12 @@ object AlarmRequestCodes {
  * - 精确闹钟未授权（Android 14+ 默认拒绝）→ 降级 `set(RTC_WAKEUP)` 非精确（可能被 Doze 延迟，
  *   属可接受降级；引导授权见 ExactAlarmGate）
  * - cancel(planId) 按 requestCode 契约遍历撤销
- * - rescheduleAll：M2 完整自愈（Boot/TimeChanged 调用），本期骨架
+ * - rescheduleAll：重启/时区自愈（Boot/TimeChanged 调用）——读今日及未来 ACTIVE 计划重排（幂等覆盖）
  */
 class AlarmPlanScheduler(
     private val context: Context,
     private val exactAlarmGate: ExactAlarmGate,
+    private val planRepository: PlanRepository,
 ) : PlanScheduler {
 
     private val alarmManager: AlarmManager? = context.getSystemService(AlarmManager::class.java)
@@ -114,6 +129,9 @@ class AlarmPlanScheduler(
     }
 
     override fun rescheduleAll() {
-        // TODO(M2): 遍历今日计划所有 Meal 重排（Boot/TimeChanged 自愈）
+        // 自愈：今日起有效计划全量重排（requestCode 契约幂等覆盖，已排闹钟自然被同 code 覆盖）
+        // 低频触发（开机/时区变更），runBlocking 读 Room 快照可接受（Receiver 侧 IO dispatcher）
+        val plans = runBlocking { planRepository.getActivePlansFrom(SystemTimeProvider.today()) }
+        plans.forEach { (plan, meals) -> schedule(plan, meals) }
     }
 }

@@ -24,6 +24,7 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
+import androidx.navigation.toRoute
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -44,9 +45,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 data object HomeRoute
 
-/** 新建计划：全屏（隐藏底栏） */
+/** 新建 / 编辑计划：全屏（隐藏底栏）；planId ≥ 0 为编辑模式（预填 + 更新重排） */
 @Serializable
-data object CreateRoute
+data class CreateRoute(val planId: Long = -1L)
 
 /** 记录 = 统计概览 + 日历（合并页） */
 @Serializable
@@ -86,16 +87,22 @@ fun Fast16NavHost(modifier: Modifier = Modifier) {
         ) {
             composable<HomeRoute> {
                 HomeScreen(
-                    onNewPlan = { navController.navigate(CreateRoute) },
+                    onNewPlan = { navController.navigate(CreateRoute()) },
                     onOpenRecord = { navController.navigateTab(RecordRoute) },
                 )
             }
-            composable<CreateRoute> {
+            composable<CreateRoute> { backStackEntry ->
+                val route = backStackEntry.toRoute<CreateRoute>()
                 CreateScreen(
+                    planId = route.planId,
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable<RecordRoute> { RecordScreen() }
+            composable<RecordRoute> {
+                RecordScreen(
+                    onEditPlan = { planId -> navController.navigate(CreateRoute(planId)) },
+                )
+            }
             composable<SettingsRoute> { SettingsScreen() }
         }
     }

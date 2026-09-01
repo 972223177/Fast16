@@ -74,6 +74,6 @@ val schedulingModule: Module = module {
     single<NotificationPermission> { NotificationPermission(androidContext()) }
     single<VibratorCompat> { VibratorCompat(androidContext()) }
     single<NotificationFactory> { NotificationFactory(androidContext()) }
-    single<PlanScheduler> { AlarmPlanScheduler(androidContext(), get()) }
+    single<PlanScheduler> { AlarmPlanScheduler(androidContext(), get(), get()) }
     single<ReminderChannel> { NotificationReminderChannel(androidContext(), get(), get()) }
 }

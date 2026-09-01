@@ -1,5 +1,6 @@
 package com.ly.fast16.data.repository
 
+import androidx.room3.withReadTransaction
 import androidx.room3.withWriteTransaction
 import com.ly.fast16.core.time.Time
 import com.ly.fast16.data.local.AppDatabase
@@ -13,6 +14,7 @@ import com.ly.fast16.domain.model.MealStatus
 import com.ly.fast16.domain.repository.PlanRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.Instant
@@ -44,6 +46,8 @@ class LocalPlanRepository(
     override suspend fun savePlan(plan: MealPlan, meals: List<Meal>): Long =
         db.withWriteTransaction {
             val planId = planDao.upsert(plan.toEntity())
+            // 先删旧三餐再插：同日覆盖 / 编辑更新时防残留旧行（date 唯一索引 upsert 复用 planId）
+            mealDao.deleteByPlan(planId)
             mealDao.upsertAll(meals.map { it.copy(planId = planId).toEntity() })
             planId
         }
@@ -55,6 +59,21 @@ class LocalPlanRepository(
 
     override suspend fun getMealById(id: Long): Meal? =
         mealDao.getById(id)?.toDomain()
+
+    override suspend fun getPlanById(planId: Long): Pair<MealPlan, List<Meal>>? {
+        val plan = planDao.getById(planId) ?: return null
+        val meals = mealDao.watchByPlan(planId).first()
+        return plan.toDomain() to meals.map { it.toDomain() }
+    }
+
+    override suspend fun getActivePlansFrom(date: LocalDate): List<Pair<MealPlan, List<Meal>>> =
+        // 快照一致：只读事务包两次查询（避免计划/餐次读取竞态；Room 3 withReadTransaction）
+        db.withReadTransaction {
+            val dateStr = Time.formatDate(date)
+            val plans = planDao.getActiveFrom(dateStr).map { it.toDomain() }
+            val meals = mealDao.getByDateFrom(dateStr).map { it.toDomain() }
+            plans.map { plan -> plan to meals.filter { it.planId == plan.id } }
+        }
 
     // ---------- Entity ↔ Domain 映射（epoch/String 存储层，Instant/LocalDate 领域层） ----------
 

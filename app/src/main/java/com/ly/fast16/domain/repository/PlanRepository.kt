@@ -29,4 +29,10 @@ interface PlanRepository {
 
     /** 按 id 取单餐（闹钟触发 / 通知打卡解析用） */
     suspend fun getMealById(id: Long): Meal?
+
+    /** 按 id 取计划（含三餐），Create 编辑模式预填用 */
+    suspend fun getPlanById(planId: Long): Pair<MealPlan, List<Meal>>?
+
+    /** 今日及未来 ACTIVE 计划（含三餐），自愈重排用（Boot/TimeChanged Receiver） */
+    suspend fun getActivePlansFrom(date: LocalDate): List<Pair<MealPlan, List<Meal>>>
 }

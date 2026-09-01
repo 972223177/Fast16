@@ -61,6 +61,18 @@
                 <action android:name="com.ly.fast16.action.CHECK_IN" />
             </intent-filter>
         </receiver>
+
+        <!-- 桌面小组件（exported=true：系统 APPWIDGET 回调必需） -->
+        <receiver
+            android:name=".core.widget.Fast16WidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/fast16_widget_info" />
+        </receiver>
     </application>
 
 </manifest>

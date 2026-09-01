@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小组件元数据（design-spec §1 widget）：updatePeriodMillis=0，仅事件/手动更新 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minWidth="180dp"
+    android:minHeight="90dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

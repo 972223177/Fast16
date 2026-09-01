@@ -27,8 +27,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.component.PreviewPixel
+import com.ly.fast16.domain.model.ReminderMode
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelShape
@@ -44,9 +46,12 @@ import org.koin.androidx.compose.koinViewModel
 
 // ---------- Intent ----------
 
-/** 设置页用户意图（改偏好 / 重看说明；M1 只读展示，偏好可配归 M3） */
+/** 设置页用户意图（改提醒模式 / 重看说明；其余偏好只读展示） */
 sealed interface SettingsIntent {
     data object ShowOnboarding : SettingsIntent
+
+    /** 修改默认提醒模式（写 SettingsStore，副作用在 ViewModel） */
+    data class SetReminderMode(val mode: ReminderMode) : SettingsIntent
 }
 
 // ---------- State ----------
@@ -72,6 +77,7 @@ object SettingsReducer {
     fun reduce(state: SettingsUiState, intent: SettingsIntent): SettingsUiState =
         when (intent) {
             SettingsIntent.ShowOnboarding -> state // 重看弹窗由 Screen 层控制
+            is SettingsIntent.SetReminderMode -> state // 写 SettingsStore，flow 驱动 UI 自动更新（SSOT）
         }
 }
 
@@ -100,6 +106,14 @@ class SettingsViewModel(
             }.collect { _uiState.value = it }
         }
     }
+
+    fun onIntent(intent: SettingsIntent) {
+        _uiState.value = SettingsReducer.reduce(_uiState.value, intent)
+        if (intent is SettingsIntent.SetReminderMode) {
+            // 写 DataStore；settings flow 变化驱动 UI 自动刷新（SSOT）
+            viewModelScope.launch { settingsStore.setDefaultReminderMode(intent.mode) }
+        }
+    }
 }
 
 // ---------- Screen ----------
@@ -126,6 +140,7 @@ fun SettingsScreen(
                 showOnboarding = true
                 onShowOnboarding()
             },
+            onSetReminderMode = { vm.onIntent(SettingsIntent.SetReminderMode(it)) },
             modifier = modifier,
         )
     }
@@ -135,8 +150,11 @@ fun SettingsScreen(
 private fun SettingsContent(
     state: SettingsUiState.Content,
     onShowOnboarding: () -> Unit,
+    onSetReminderMode: (ReminderMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showReminderDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -164,8 +182,12 @@ private fun SettingsContent(
             label = "默认备餐时长",
             value = "早${state.defaultPrepBreakfastMinutes} · 午${state.defaultPrepLunchMinutes} · 晚${state.defaultPrepDinnerMinutes}",
         )
-        // 默认提醒只读项：M3 变可配（ReminderChannel 扩展点 App 内挂点）
-        SettingRow(label = "提醒模式", value = reminderLabel(state.defaultReminderMode))
+        // 提醒模式（M3 可配：点击弹窗 4 选，写 SettingsStore）
+        SettingRow(
+            label = "提醒模式",
+            value = reminderLabel(state.defaultReminderMode),
+            onClick = { showReminderDialog = true },
+        )
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
@@ -193,16 +215,57 @@ private fun SettingsContent(
         // 关于
         SettingRow(label = "关于 Fast16", value = "v0.1.0")
     }
+
+    // 提醒模式选择弹窗（像素 chip，选中黄底黑字）
+    if (showReminderDialog) {
+        PixelDialog(onDismiss = { showReminderDialog = false }, title = "提醒模式") {
+            Column {
+                PixelText(
+                    text = "到点提醒的呈现方式：",
+                    color = PixelColors.gray,
+                    fontSize = PixelType.Size.xs,
+                )
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
+                ReminderMode.entries.forEach { mode ->
+                    val selected = mode.name == state.defaultReminderMode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = PixelShape.Spacing.xs)
+                            .background(if (selected) PixelColors.yellow else PixelColors.panel)
+                            .border(BorderStroke(PixelShape.borderWidth, Color.Black))
+                            .clickable {
+                                onSetReminderMode(mode)
+                                showReminderDialog = false
+                            }
+                            .padding(PixelShape.Spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PixelText(
+                            text = reminderLabel(mode.name),
+                            color = if (selected) PixelColors.bg else PixelColors.white,
+                            fontSize = PixelType.Size.sm,
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (selected) {
+                            PixelText(text = "●", color = PixelColors.bg, fontSize = PixelType.Size.xs)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
-/** 设置行（原型 set-row：面板底黑边，label 左 / 像素 value 右） */
+/** 设置行（原型 set-row：面板底黑边，label 左 / 像素 value 右；可选点击） */
 @Composable
-private fun SettingRow(label: String, value: String) {
+private fun SettingRow(label: String, value: String, onClick: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(PixelColors.panel)
             .border(BorderStroke(PixelShape.borderWidth, Color.Black))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(PixelShape.Spacing.md),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -235,6 +298,7 @@ private fun SettingsScreenPreview() {
                 defaultReminderMode = "NOTIFY",
             ),
             onShowOnboarding = {},
+            onSetReminderMode = {},
         )
     }
 }

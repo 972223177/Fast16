@@ -34,6 +34,7 @@ import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCalendar
 import com.ly.fast16.core.designsystem.component.PixelCard
 import com.ly.fast16.core.designsystem.component.PixelDialog
+import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
 import com.ly.fast16.core.designsystem.component.PixelStatBars
 import com.ly.fast16.core.designsystem.component.PixelText
@@ -147,7 +148,14 @@ class RecordViewModel(
             is RecordIntent.TapDate -> selectedFlow.value = intent.date
             is RecordIntent.BackfillCheckIn -> viewModelScope.launch {
                 val date = selectedFlow.value ?: return@launch
-                checkInUseCase.checkIn(date, intent.mealType, clock.instant())
+                // 已打卡 → 二次点击撤销；未打卡 → 补打卡
+                val already = (_uiState.value as? RecordUiState.Content)
+                    ?.selectedChecked?.contains(intent.mealType) == true
+                if (already) {
+                    checkInUseCase.uncheckIn(date, intent.mealType)
+                } else {
+                    checkInUseCase.checkIn(date, intent.mealType, clock.instant())
+                }
             }
 
             RecordIntent.DeletePlan -> viewModelScope.launch {
@@ -220,7 +228,7 @@ fun RecordScreen(
     }
 
     when (val s = state) {
-        RecordUiState.Loading -> Unit
+        RecordUiState.Loading -> PixelLoading()
         is RecordUiState.Content -> RecordContent(
             state = s,
             onIntent = vm::onIntent,

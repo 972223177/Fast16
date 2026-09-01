@@ -89,6 +89,7 @@ fun Fast16NavHost(modifier: Modifier = Modifier) {
                 HomeScreen(
                     onNewPlan = { navController.navigate(CreateRoute()) },
                     onOpenRecord = { navController.navigateTab(RecordRoute) },
+                    onEditPlan = { planId -> navController.navigate(CreateRoute(planId)) },
                 )
             }
             composable<CreateRoute> { backStackEntry ->
@@ -164,6 +165,7 @@ private fun PixelBottomBar(
                     rows = icon,
                     palette = mapOf('K' to fg),
                     modifier = Modifier.size(18.dp),
+                    contentDescription = "$label 标签",
                 )
                 PixelText(
                     text = label,

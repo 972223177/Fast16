@@ -34,6 +34,7 @@ import com.ly.fast16.core.designsystem.component.PixelBubble
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCard
 import com.ly.fast16.core.designsystem.component.PixelCharacter
+import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelMealRow
 import com.ly.fast16.core.designsystem.component.PixelNumber
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
@@ -81,6 +82,9 @@ sealed interface HomeIntent {
 
     /** 打卡某餐 */
     data class CheckIn(val mealType: MealType) : HomeIntent
+
+    /** 撤销打卡（已打卡餐二次点击） */
+    data class UncheckIn(val mealType: MealType) : HomeIntent
 }
 
 // ---------- State ----------
@@ -102,6 +106,8 @@ sealed interface HomeUiState {
         val streak: Int,
         /** 进食窗口进度 0..1（断食面板 16 格 seg） */
         val windowProgress: Float,
+        /** 今日计划 id（-1 = 无计划；编辑入口用） */
+        val planId: Long = -1L,
     ) : HomeUiState
 }
 
@@ -158,6 +164,12 @@ class HomeViewModel(
                 val today = SystemTimeProvider.today()
                 checkInUseCase.checkIn(today, intent.mealType, clock.instant())
                 _toast.value = "${SpeechCatalog.mealName(intent.mealType)} 已打卡"
+            }
+
+            is HomeIntent.UncheckIn -> viewModelScope.launch {
+                val today = SystemTimeProvider.today()
+                checkInUseCase.uncheckIn(today, intent.mealType)
+                _toast.value = "已撤销 ${SpeechCatalog.mealName(intent.mealType)} 打卡"
             }
         }
     }
@@ -230,6 +242,7 @@ class HomeViewModel(
             subtitle = subtitle,
             streak = streak,
             windowProgress = windowProgress,
+            planId = plan?.id ?: -1L,
         )
     }
 
@@ -256,6 +269,7 @@ fun HomeScreen(
     onNewPlan: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenRecord: () -> Unit = {},
+    onEditPlan: (Long) -> Unit = {},
 ) {
     val vm: HomeViewModel = koinViewModel()
     val state by vm.uiState.collectAsState()
@@ -269,12 +283,14 @@ fun HomeScreen(
     }
 
     when (val s = state) {
-        HomeUiState.Loading -> Unit
+        HomeUiState.Loading -> PixelLoading()
         is HomeUiState.Content -> HomeContent(
             state = s,
             onNewPlan = { vm.onIntent(HomeIntent.NewPlan); onNewPlan() },
             onCheckIn = { vm.onIntent(HomeIntent.CheckIn(it)) },
+            onUncheckIn = { vm.onIntent(HomeIntent.UncheckIn(it)) },
             onOpenRecord = onOpenRecord,
+            onEditPlan = onEditPlan,
             modifier = modifier,
         )
     }
@@ -294,7 +310,9 @@ private fun HomeContent(
     state: HomeUiState.Content,
     onNewPlan: () -> Unit,
     onCheckIn: (MealType) -> Unit,
+    onUncheckIn: (MealType) -> Unit,
     onOpenRecord: () -> Unit,
+    onEditPlan: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -355,6 +373,13 @@ private fun HomeContent(
 
         // 三餐时间轴（原型 meal-row ×3）或空态
         if (state.hasPlanToday) {
+            // P2：今日打卡进度小字
+            PixelText(
+                text = "已打卡 ${state.meals.count { it.checkedIn }}/${state.meals.size}",
+                color = PixelColors.gray,
+                fontSize = PixelType.Size.xs,
+            )
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
             state.meals.forEach { meal ->
                 PixelMealRow(
                     name = meal.name,
@@ -362,10 +387,22 @@ private fun HomeContent(
                     prepMinutes = meal.prepMinutes,
                     checkedIn = meal.checkedIn,
                     hasMeal = meal.hasMeal,
-                    onCheckIn = { onCheckIn(meal.type) },
+                    // 已打卡 → 二次点击撤销；未打卡 → 打卡
+                    onCheckIn = {
+                        if (meal.checkedIn) onUncheckIn(meal.type) else onCheckIn(meal.type)
+                    },
                     modifier = Modifier.padding(vertical = PixelShape.Spacing.xs),
                 )
             }
+
+            // 今日计划编辑入口（复用 Create 编辑模式）
+            Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+            PixelButton(
+                text = "编辑计划",
+                onClick = { onEditPlan(state.planId) },
+                primary = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
         } else {
             PixelCard(backgroundColor = PixelColors.panel.copy(alpha = 0.4f)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -434,7 +471,9 @@ private fun HomeScreenPreview() {
             ),
             onNewPlan = {},
             onCheckIn = {},
+            onUncheckIn = {},
             onOpenRecord = {},
+            onEditPlan = {},
         )
     }
 }

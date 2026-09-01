@@ -3,6 +3,7 @@ package com.ly.fast16.core.system
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.annotation.RequiresApi
@@ -33,7 +34,10 @@ class ExactAlarmGate(private val context: Context) {
      */
     fun grantIntent(): Intent? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !canScheduleExact) {
-            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+            // 必须带 package: URI 锚定本应用，否则系统设置页不展示本应用入口（授权引导失效）
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
         } else {
             null
         }

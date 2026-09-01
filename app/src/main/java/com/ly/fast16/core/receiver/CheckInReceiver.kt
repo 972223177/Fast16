@@ -6,8 +6,10 @@ import android.content.Context
 import android.content.Intent
 import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.notification.NotificationFactory
+import com.ly.fast16.core.widget.Fast16Widget
 import com.ly.fast16.domain.repository.PlanRepository
 import com.ly.fast16.domain.usecase.CheckInUseCase
+import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -39,6 +41,7 @@ class CheckInReceiver : BroadcastReceiver(), KoinComponent {
             try {
                 planRepository.getMealById(mealId)?.let { meal ->
                     checkInUseCase.checkInMeal(meal, SystemTimeProvider.now())
+                    Fast16Widget().updateAll(context) // 打卡 → 桌面小组件同步
                 }
                 if (notificationId >= 0) {
                     context.getSystemService(NotificationManager::class.java)?.cancel(notificationId)

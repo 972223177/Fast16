@@ -31,6 +31,8 @@ class CheckInUseCaseTest {
         val checked = mutableListOf<Pair<LocalDate, MealType>>()
 
         override fun watchMonth(month: YearMonth): Flow<Map<LocalDate, Set<MealType>>> = flowOf(emptyMap())
+        override fun watchCompletedDays(from: LocalDate, to: LocalDate): Flow<Set<LocalDate>> = flowOf(emptySet())
+        override fun watchRange(from: LocalDate, to: LocalDate): Flow<Map<LocalDate, Set<MealType>>> = flowOf(emptyMap())
         override suspend fun checkIn(date: LocalDate, mealType: MealType, at: Instant) {
             checked += date to mealType
         }

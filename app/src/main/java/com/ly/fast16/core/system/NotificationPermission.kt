@@ -3,8 +3,10 @@ package com.ly.fast16.core.system
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
@@ -42,4 +44,19 @@ class NotificationPermission(private val context: Context) {
                 activity,
                 Manifest.permission.POST_NOTIFICATIONS,
             )
+
+    /** 是否已「永不再询问」（33+ 拒绝过且系统不再展示 rationale → 只能跳系统设置页） */
+    fun isPermanentlyDenied(activity: Activity): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !isGranted &&
+            !ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                Manifest.permission.POST_NOTIFICATIONS,
+            )
+
+    /** 跳系统「应用通知」设置页（永不再询问后的引导路径） */
+    fun settingsIntent(): Intent =
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        }
 }

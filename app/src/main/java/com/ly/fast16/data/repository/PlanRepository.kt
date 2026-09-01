@@ -45,7 +45,9 @@ class LocalPlanRepository(
 
     override suspend fun savePlan(plan: MealPlan, meals: List<Meal>): Long =
         db.withWriteTransaction {
-            val planId = planDao.upsert(plan.toEntity())
+            // 编辑覆盖（id>0）保留原 createdAt（@Upsert 全列更新，直接覆盖会重置创建时间）
+            val existingCreatedAt = planDao.getById(plan.id)?.createdAtEpoch
+            val planId = planDao.upsert(plan.toEntity(createdAtEpoch = existingCreatedAt ?: clock.millis()))
             // 先删旧三餐再插：同日覆盖 / 编辑更新时防残留旧行（date 唯一索引 upsert 复用 planId）
             mealDao.deleteByPlan(planId)
             mealDao.upsertAll(meals.map { it.copy(planId = planId).toEntity() })
@@ -85,13 +87,13 @@ class LocalPlanRepository(
         status = status,
     )
 
-    private fun MealPlan.toEntity() = MealPlanEntity(
+    private fun MealPlan.toEntity(createdAtEpoch: Long) = MealPlanEntity(
         id = id,
         date = Time.formatDate(date),
         windowStartEpoch = windowStart.toEpochMilli(),
         windowEndEpoch = windowEnd.toEpochMilli(),
         status = status,
-        createdAtEpoch = clock.millis(),
+        createdAtEpoch = createdAtEpoch,
     )
 
     private fun MealEntity.toDomain() = Meal(

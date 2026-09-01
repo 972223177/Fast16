@@ -93,6 +93,22 @@ interface CheckInDao {
     @Query("SELECT * FROM check_ins WHERE date LIKE :yearMonth || '%' ORDER BY date ASC")
     fun watchMonth(yearMonth: String): Flow<List<CheckInEntity>>
 
+    /** 区间「完成日」流（当日三餐均打卡）：跨月连续打卡统计专用，打卡变更自动刷新 */
+    @Query(
+        """
+        SELECT date FROM check_ins
+        WHERE date BETWEEN :from AND :to
+        GROUP BY date
+        HAVING COUNT(DISTINCT meal_type) = 3
+        ORDER BY date ASC
+        """,
+    )
+    fun watchCompletedDayDates(from: String, to: String): Flow<List<String>>
+
+    /** 区间打卡流（date → 餐次）：近 7 天柱状图等锚定真实 today 的统计用 */
+    @Query("SELECT * FROM check_ins WHERE date BETWEEN :from AND :to ORDER BY date ASC")
+    fun watchRange(from: String, to: String): Flow<List<CheckInEntity>>
+
     @Upsert
     suspend fun checkIn(checkIn: CheckInEntity)
 

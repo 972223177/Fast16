@@ -2,6 +2,7 @@ package com.ly.fast16.domain.schedule
 
 import com.ly.fast16.core.time.Time
 import com.ly.fast16.domain.model.Meal
+import com.ly.fast16.domain.model.MealStatus
 import com.ly.fast16.domain.model.MealType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -54,6 +55,24 @@ class FastingTimerTest {
     fun allActionsPast_returnsNull() {
         val meals = listOf(meal(12, 0, prepMin = 30))
         assertNull(FastingTimer.nextAction(at(14, 0), meals))
+    }
+
+    @Test
+    fun completedMeal_notIncludedInNextAction() {
+        // 已打卡完成的餐不产生倒计时——倒计时指向下一未完成餐
+        val meals = listOf(
+            meal(12, 0).copy(status = MealStatus.COMPLETED),
+            meal(15, 0),
+        )
+        assertEquals(at(15, 0), FastingTimer.nextAction(at(10, 0), meals))
+    }
+
+    @Test
+    fun allCompleted_returnsNull() {
+        // 提前全部打卡 → 无未完成餐 → 倒计时消失
+        val meals = listOf(meal(12, 0).copy(status = MealStatus.COMPLETED))
+        assertNull(FastingTimer.nextAction(at(10, 0), meals))
+        assertNull(FastingTimer.fastingRemaining(at(10, 0), meals))
     }
 
     @Test

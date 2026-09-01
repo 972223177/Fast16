@@ -21,7 +21,9 @@ object CharacterStateDeriver {
             m.prepMinutes > 0 && now >= m.prepTime && now < m.mealTime
         }?.let { return CharacterState.PREP }
 
-        meals.lastOrNull { m -> now >= m.mealTime && m.status != MealStatus.COMPLETED }
+        // 显式取「已到点且未完成」的最晚一餐（maxByOrNull 不依赖输入有序——原 lastOrNull 隐含升序契约）
+        meals.filter { m -> now >= m.mealTime && m.status != MealStatus.COMPLETED }
+            .maxByOrNull { it.mealTime }
             ?.let { return CharacterState.EATING }
 
         if (meals.all { it.status == MealStatus.COMPLETED }) return CharacterState.REST

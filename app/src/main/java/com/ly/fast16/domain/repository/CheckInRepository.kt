@@ -15,6 +15,12 @@ interface CheckInRepository {
     /** 月历打卡流：date → 当日已打卡餐次集合 */
     fun watchMonth(month: YearMonth): Flow<Map<LocalDate, Set<MealType>>>
 
+    /** 区间内「完成日」流（当日三餐均打卡）：跨月连续打卡统计专用，打卡变更自动刷新 */
+    fun watchCompletedDays(from: LocalDate, to: LocalDate): Flow<Set<LocalDate>>
+
+    /** 区间打卡流：date → 当日已打卡餐次集合（近 7 天柱状图等锚定真实 today 的统计用） */
+    fun watchRange(from: LocalDate, to: LocalDate): Flow<Map<LocalDate, Set<MealType>>>
+
     /** 打卡（UPSERT 幂等，重复打卡覆盖时间戳） */
     suspend fun checkIn(date: LocalDate, mealType: MealType, at: Instant)
 

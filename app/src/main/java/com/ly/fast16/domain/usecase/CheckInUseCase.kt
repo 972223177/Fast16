@@ -6,6 +6,7 @@ import com.ly.fast16.domain.model.MealStatus
 import com.ly.fast16.domain.model.MealType
 import com.ly.fast16.domain.repository.CheckInRepository
 import com.ly.fast16.domain.repository.PlanRepository
+import com.ly.fast16.domain.schedule.MealStateMachine
 import kotlinx.coroutines.flow.first
 import java.time.Instant
 import java.time.LocalDate
@@ -39,12 +40,27 @@ class DefaultCheckInUseCase(
     }
 
     override suspend fun checkInMeal(meal: Meal, at: Instant) {
-        checkInRepository.checkIn(meal.date(), meal.type, at)
+        // 打卡归属 = 计划日期（非 mealTime 派生日期）：晚餐跨午夜时 mealTime 落次日，
+        // 若按 mealTime 归属会破坏「当日三餐」聚合；计划已删则退回 mealTime 日期
+        val planDate = planRepository.getPlanById(meal.planId)?.first?.date
+            ?: SystemTimeProvider.dateOf(meal.mealTime)
+        checkInRepository.checkIn(planDate, meal.type, at)
         planRepository.updateMealStatus(meal.id, MealStatus.COMPLETED)
     }
 
     override suspend fun uncheckIn(date: LocalDate, mealType: MealType) {
         checkInRepository.uncheckIn(date, mealType)
+        // 联动回退：对应 Meal 按「当前时刻 + 无打卡」重算状态——
+        // 撤销后可能仍处于 EATING/PREPARING（时间已到），不能简单置回 SCHEDULED
+        val now = SystemTimeProvider.now()
+        planRepository.watchMealsByDate(date).first()
+            .firstOrNull { it.type == mealType }
+            ?.let { meal ->
+                planRepository.updateMealStatus(
+                    meal.id,
+                    MealStateMachine.advance(meal, now, hasCheckIn = false),
+                )
+            }
     }
 
     /** 当日对应 Meal 联动置 COMPLETED（无对应 Meal 时静默，允许补打卡） */

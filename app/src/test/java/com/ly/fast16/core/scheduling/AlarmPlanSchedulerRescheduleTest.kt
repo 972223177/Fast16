@@ -12,6 +12,7 @@ import com.ly.fast16.domain.model.ReminderMode
 import com.ly.fast16.domain.repository.PlanRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -82,7 +83,7 @@ class AlarmPlanSchedulerRescheduleTest {
             planRepository = FakePlanRepository(listOf(todayPlans, tomorrowPlans)),
         )
 
-        scheduler.rescheduleAll()
+        runBlocking { scheduler.rescheduleAll() }
 
         val alarmManager =
             RuntimeEnvironment.getApplication().getSystemService(AlarmManager::class.java)
@@ -98,7 +99,7 @@ class AlarmPlanSchedulerRescheduleTest {
             planRepository = FakePlanRepository(emptyList()),
         )
 
-        scheduler.rescheduleAll()
+        runBlocking { scheduler.rescheduleAll() }
 
         val alarmManager =
             RuntimeEnvironment.getApplication().getSystemService(AlarmManager::class.java)
@@ -115,7 +116,7 @@ class AlarmPlanSchedulerRescheduleTest {
             planRepository = FakePlanRepository(listOf(past)),
         )
 
-        scheduler.rescheduleAll()
+        runBlocking { scheduler.rescheduleAll() }
 
         val alarmManager =
             RuntimeEnvironment.getApplication().getSystemService(AlarmManager::class.java)

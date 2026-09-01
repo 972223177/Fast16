@@ -12,7 +12,6 @@ import com.ly.fast16.domain.model.MealPhase
 import com.ly.fast16.domain.model.MealPlan
 import com.ly.fast16.domain.model.MealType
 import com.ly.fast16.domain.repository.PlanRepository
-import kotlinx.coroutines.runBlocking
 
 /**
  * 闹钟 requestCode 契约（可测、cancel 可遍历撤销）：
@@ -30,8 +29,8 @@ interface PlanScheduler {
     /** 撤销该计划全部闹钟 */
     fun cancel(planId: Long)
 
-    /** 重启 / 时区自愈：重排全部有效计划的闹钟（BootReceiver / TimeChangedReceiver 调用） */
-    fun rescheduleAll()
+    /** 重启 / 时区自愈：重排全部有效计划的闹钟（BootReceiver / TimeChangedReceiver 调用）；suspend 由调用方协程 await */
+    suspend fun rescheduleAll()
 }
 
 /**
@@ -128,10 +127,10 @@ class AlarmPlanScheduler(
         }
     }
 
-    override fun rescheduleAll() {
+    override suspend fun rescheduleAll() {
         // 自愈：今日起有效计划全量重排（requestCode 契约幂等覆盖，已排闹钟自然被同 code 覆盖）
-        // 低频触发（开机/时区变更），runBlocking 读 Room 快照可接受（Receiver 侧 IO dispatcher）
-        val plans = runBlocking { planRepository.getActivePlansFrom(SystemTimeProvider.today()) }
+        // 调用方（Boot/TimeChanged Receiver）已在 IO 协程中，直接 suspend await，不再 runBlocking 阻塞承载线程
+        val plans = planRepository.getActivePlansFrom(SystemTimeProvider.today())
         plans.forEach { (plan, meals) -> schedule(plan, meals) }
     }
 }

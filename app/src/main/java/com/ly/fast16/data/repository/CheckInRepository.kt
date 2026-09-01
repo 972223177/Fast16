@@ -26,6 +26,23 @@ class LocalCheckInRepository(
             ).mapValues { (_, types) -> types.toSet() }
         }
 
+    override fun watchCompletedDays(from: LocalDate, to: LocalDate): Flow<Set<LocalDate>> =
+        checkInDao.watchCompletedDayDates(
+            from = Time.formatDate(from),
+            to = Time.formatDate(to),
+        ).map { list -> list.mapTo(mutableSetOf()) { Time.parseDate(it) } }
+
+    override fun watchRange(from: LocalDate, to: LocalDate): Flow<Map<LocalDate, Set<MealType>>> =
+        checkInDao.watchRange(
+            from = Time.formatDate(from),
+            to = Time.formatDate(to),
+        ).map { list ->
+            list.groupBy(
+                keySelector = { Time.parseDate(it.date) },
+                valueTransform = { it.mealType },
+            ).mapValues { (_, types) -> types.toSet() }
+        }
+
     override suspend fun checkIn(date: LocalDate, mealType: MealType, at: Instant) {
         checkInDao.checkIn(
             CheckInEntity(

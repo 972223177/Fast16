@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,10 +24,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -38,6 +41,8 @@ import com.ly.fast16.core.designsystem.component.PixelCard
 import com.ly.fast16.core.designsystem.component.PixelCharacter
 import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelMealRow
+import com.ly.fast16.core.designsystem.component.PixelConfetti
+import com.ly.fast16.core.designsystem.component.PixelConfettiBurst
 import com.ly.fast16.core.designsystem.component.PixelNumber
 import com.ly.fast16.core.designsystem.component.PixelSectionTitle
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
@@ -52,6 +57,8 @@ import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
 import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.time.Time
+import com.ly.fast16.core.widget.Fast16Widget
+import androidx.glance.appwidget.updateAll
 import com.ly.fast16.domain.model.CharacterState
 import com.ly.fast16.domain.model.Meal
 import com.ly.fast16.domain.model.MealPhase
@@ -70,6 +77,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -143,6 +151,10 @@ class HomeViewModel(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
 
+    /** 成功礼花（打卡：小礼花 / 三餐全打卡：大礼花） */
+    private val _confetti = MutableStateFlow<PixelConfettiBurst?>(null)
+    val confetti: StateFlow<PixelConfettiBurst?> = _confetti.asStateFlow()
+
     init {
         viewModelScope.launch {
             val today = SystemTimeProvider.today()
@@ -150,12 +162,12 @@ class HomeViewModel(
                 planRepository.watchPlanByDate(today),
                 planRepository.watchMealsByDate(today),
                 checkInRepository.watchMonth(YearMonth.from(today)),
+                // 跨月滚动窗口（今起 366 天）：连续打卡不受月末截断
+                checkInRepository.watchCompletedDays(today.minusDays(366), today),
                 secondTicker(),
-            ) { planPair, meals, monthChecked, _ ->
+            ) { planPair, meals, monthChecked, completedDays, _ ->
                 val now = clock.instant()
                 val checkedSet = monthChecked[today].orEmpty()
-                // 当月「完成日」集合（三餐均打卡）→ 连续打卡天数（原型 🔥 chip）
-                val completedDays = monthChecked.filterValues { it.size >= 3 }.keys
                 val streak = StreakCalculator.computeStreak(completedDays, today)
                 derive(now, planPair?.first, meals, checkedSet, streak)
             }.collect { _uiState.value = it }
@@ -169,6 +181,14 @@ class HomeViewModel(
                 val today = SystemTimeProvider.today()
                 checkInUseCase.checkIn(today, intent.mealType, clock.instant())
                 _toast.value = "${SpeechCatalog.mealName(intent.mealType)} 已打卡"
+                // 礼花：今日三餐全打卡 → 多彩大礼花；否则日常小礼花
+                val checkedCount = checkInRepository
+                    .watchMonth(YearMonth.from(today)).first()[today].orEmpty().size
+                _confetti.value = if (checkedCount >= MealType.entries.size) {
+                    PixelConfettiBurst.ALL_COMPLETED
+                } else {
+                    PixelConfettiBurst.CHECK_IN
+                }
             }
 
             is HomeIntent.UncheckIn -> viewModelScope.launch {
@@ -181,6 +201,10 @@ class HomeViewModel(
 
     fun consumeToast() {
         _toast.value = null
+    }
+
+    fun consumeConfetti() {
+        _confetti.value = null
     }
 
     /** 每秒整秒刷新（断食剩余「分:秒」秒级跳字，像素风阶跃） */
@@ -279,6 +303,9 @@ fun HomeScreen(
     val vm: HomeViewModel = koinViewModel()
     val state by vm.uiState.collectAsState()
     val toastText by vm.toast.collectAsState()
+    val confetti by vm.confetti.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showToast by remember { mutableStateOf(false) }
 
     LaunchedEffect(toastText) {
@@ -292,8 +319,14 @@ fun HomeScreen(
         is HomeUiState.Content -> HomeContent(
             state = s,
             onNewPlan = { vm.onIntent(HomeIntent.NewPlan); onNewPlan() },
-            onCheckIn = { vm.onIntent(HomeIntent.CheckIn(it)) },
-            onUncheckIn = { vm.onIntent(HomeIntent.UncheckIn(it)) },
+            onCheckIn = {
+                vm.onIntent(HomeIntent.CheckIn(it))
+                scope.launch { Fast16Widget().updateAll(context) } // 打卡 → 桌面小组件同步
+            },
+            onUncheckIn = {
+                vm.onIntent(HomeIntent.UncheckIn(it))
+                scope.launch { Fast16Widget().updateAll(context) } // 撤销 → 桌面小组件同步
+            },
             onOpenRecord = onOpenRecord,
             onEditPlan = onEditPlan,
             modifier = modifier,
@@ -307,6 +340,20 @@ fun HomeScreen(
             show = showToast,
             onDismiss = { showToast = false; vm.consumeToast() },
         )
+    }
+
+    // 打卡成功礼花：全屏居中 overlay，播完移除（日常小礼花 / 三餐全打卡大礼花）
+    confetti?.let { burst ->
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            PixelConfetti(
+                burst = burst,
+                onFinished = vm::consumeConfetti,
+                modifier = Modifier.size(160.dp),
+            )
+        }
     }
 }
 
@@ -361,21 +408,31 @@ private fun HomeContent(
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
         // 断食面板：标签 + 大计时（时:分:秒）+ 16 格 seg（原型 fast-panel）
+        // 三态：有倒计时（距下一未完成餐）/ 全部打卡完成（今日完成）/ 时间过完未打卡（窗口结束）
         PixelCard(
             modifier = Modifier.fillMaxWidth(),
         ) {
+            val allChecked = state.meals.isNotEmpty() && state.meals.all { it.checkedIn }
+            val (panelLabel, panelValue, panelColor) = when {
+                state.fastingSeconds != null ->
+                    Triple("断食中 · 距下一餐", formatFastingHMS(state.fastingSeconds), PixelColors.yellow)
+                allChecked ->
+                    Triple("今日已完成 ✦", "00:00:00", PixelColors.green)
+                else ->
+                    Triple("今日窗口已结束", "--:--:--", PixelColors.gray)
+            }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                PixelText(text = "断食中 · 距下一餐", color = PixelColors.gray, fontSize = PixelType.Size.xs)
+                PixelText(text = panelLabel, color = PixelColors.gray, fontSize = PixelType.Size.xs)
                 Spacer(modifier = Modifier.height(PixelShape.Spacing.sm))
                 // spec 2.2：断食倒计时 34px
                 PixelNumber(
-                    value = formatFastingHMS(state.fastingSeconds),
-                    color = PixelColors.yellow,
+                    value = panelValue,
+                    color = panelColor,
                     fontSize = 34.sp,
                 )
                 Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
                 PixelProgressBar(
-                    progress = state.windowProgress,
+                    progress = if (allChecked) 1f else state.windowProgress,
                     segments = 16,
                     litColor = PixelColors.green,
                 )
@@ -451,7 +508,7 @@ private fun StreakChip(streak: Int, onClick: () -> Unit) {
             .background(PixelColors.panel)
             .border(BorderStroke(PixelShape.borderWidth, Color.Black))
             .clickable(onClick = onClick)
-            .padding(horizontal = PixelShape.Spacing.md, vertical = PixelShape.Spacing.xs),
+            .padding(horizontal = PixelShape.Spacing.md, vertical = PixelShape.Spacing.sm),
         contentAlignment = Alignment.Center,
     ) {
         PixelText(text = "🔥 $streak 天", color = PixelColors.yellow, fontSize = PixelType.Size.xs)

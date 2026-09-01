@@ -35,6 +35,7 @@ fun PixelMealDots(
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         states.forEachIndexed { index, (label, state) ->
             Column(

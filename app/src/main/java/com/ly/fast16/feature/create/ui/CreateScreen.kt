@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +34,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCard
+import com.ly.fast16.core.designsystem.component.PixelConfetti
+import com.ly.fast16.core.designsystem.component.PixelConfettiBurst
 import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelStepper
 import com.ly.fast16.core.designsystem.component.PixelPageTitle
@@ -233,14 +236,13 @@ object CreateReducer {
             .revalidate()
     }
 
-    /** 选中候选 → 同步午/晚时间与备餐默认值 */
+    /** 选中候选 → 同步午/晚时间。备餐分钟是用户独立偏好（initial/editInitial 已给默认），
+     *  不随候选重置——避免切候选/改早餐时静默丢弃已微调值 */
     private fun CreateUiState.Content.syncFromCandidate(): CreateUiState.Content {
         val c = candidates.getOrNull(selectedIndex) ?: return this
         return copy(
             lunchTime = Time.timeOf(c.lunch, zone),
             dinnerTime = Time.timeOf(c.dinner, zone),
-            prepLunch = prepLunchDefault,
-            prepDinner = prepDinnerDefault,
         ).revalidate()
     }
 
@@ -282,32 +284,43 @@ class CreateViewModel(
     /** 编辑模式：当前编辑的计划 id（-1 = 新建） */
     private var editingPlanId: Long = -1L
 
+    /** 加载请求（-1 = 新建态；≥0 = 编辑预填）：单协程串行处理，消除 init 与 loadForEdit 并发写竞态 */
+    private val loadRequest = MutableStateFlow(-1L)
+
     /** 编辑模式：按 planId 加载现有计划预填（Record 详情「编辑计划」入口） */
     fun loadForEdit(planId: Long) {
-        viewModelScope.launch {
-            val pair = planRepository.getPlanById(planId) ?: return@launch
-            val settings = settingsStore.settings.first()
-            editingPlanId = planId
-            _uiState.value = CreateReducer.editInitial(
-                settings = settings,
-                plan = pair.first,
-                meals = pair.second,
-                zone = SystemTimeProvider.zone,
-            )
-        }
+        loadRequest.value = planId
     }
 
     init {
         viewModelScope.launch {
-            val settings = settingsStore.settings.first()
-            val zone = SystemTimeProvider.zone
-            val breakfast = Time.alignToMinute(clock.instant()).atZone(zone).toLocalTime()
-            _uiState.value = CreateReducer.initial(
-                settings = settings,
-                today = SystemTimeProvider.today(),
-                zone = zone,
-                defaultBreakfast = breakfast,
-            )
+            // 统一加载入口：collect 串行 await，后值覆盖前值（StateFlow 合并），无并发覆盖
+            loadRequest.collect { planId ->
+                val settings = settingsStore.settings.first()
+                val zone = SystemTimeProvider.zone
+                if (planId >= 0) {
+                    val pair = planRepository.getPlanById(planId)
+                    if (pair != null) {
+                        editingPlanId = planId
+                        _uiState.value = CreateReducer.editInitial(
+                            settings = settings,
+                            plan = pair.first,
+                            meals = pair.second,
+                            zone = zone,
+                        )
+                        return@collect
+                    }
+                    // 计划已不存在（被删）→ 退回新建态
+                    editingPlanId = -1L
+                }
+                val breakfast = Time.alignToMinute(clock.instant()).atZone(zone).toLocalTime()
+                _uiState.value = CreateReducer.initial(
+                    settings = settings,
+                    today = SystemTimeProvider.today(),
+                    zone = zone,
+                    defaultBreakfast = breakfast,
+                )
+            }
         }
     }
 
@@ -386,6 +399,7 @@ fun CreateScreen(
         if (planId >= 0) vm.loadForEdit(planId)
     }
 
+    var showConfetti by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         vm.events.collect { event ->
@@ -393,7 +407,7 @@ fun CreateScreen(
                 CreateEvent.Generated -> {
                     // IN-02：计划变更后刷新桌面小组件（updatePeriodMillis=0，事件驱动）
                     Fast16Widget().updateAll(context)
-                    onBack()
+                    showConfetti = true // 生成成功礼花，播完再返回
                 }
 
                 CreateEvent.Failed -> showFailToast = true
@@ -418,6 +432,22 @@ fun CreateScreen(
             show = showFailToast,
             onDismiss = { showFailToast = false },
         )
+    }
+
+    // 生成成功礼花 overlay：遮罩 + 大礼花，播完自动返回首页
+    if (showConfetti) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(PixelColors.bg.copy(alpha = 0.65f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            PixelConfetti(
+                burst = PixelConfettiBurst.PLAN_CREATED,
+                onFinished = { showConfetti = false; onBack() },
+                modifier = Modifier.size(180.dp),
+            )
+        }
     }
 }
 

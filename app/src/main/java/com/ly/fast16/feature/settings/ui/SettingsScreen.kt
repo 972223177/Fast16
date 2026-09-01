@@ -1,5 +1,6 @@
 package com.ly.fast16.feature.settings.ui
 
+import android.app.Activity
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -63,6 +64,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 
 // ---------- Intent ----------
 
@@ -194,6 +196,8 @@ fun SettingsScreen(
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { vm.refreshPermissions() }
+    val notificationPermission = koinInject<NotificationPermission>()
+    val context = LocalContext.current
 
     // 每次回到前台刷新权限状态：覆盖「从系统设置返回」（精确闹钟授权）与外部改权限，
     // 不依赖个别授权路径的回调（launcher 回调仅作为快速响应兜底）
@@ -219,8 +223,14 @@ fun SettingsScreen(
             onSetReminderMode = { vm.onIntent(SettingsIntent.SetReminderMode(it)) },
             onSetSetting = vm::onIntent,
             onRequestNotification = {
-                // 字符串字面量：POST_NOTIFICATIONS 常量 API 33+（minSdk 24），且 <33 恒已授权不会走到这
-                notificationLauncher.launch("android.permission.POST_NOTIFICATIONS")
+                // 永不再询问 → 跳系统通知设置页；否则弹系统申请框
+                // （字符串字面量：POST_NOTIFICATIONS 常量 API 33+；<33 恒已授权不会走到申请）
+                val activity = context as? Activity
+                if (activity != null && notificationPermission.isPermanentlyDenied(activity)) {
+                    activity.startActivity(notificationPermission.settingsIntent())
+                } else {
+                    notificationLauncher.launch("android.permission.POST_NOTIFICATIONS")
+                }
             },
             modifier = modifier,
         )
@@ -508,7 +518,9 @@ private fun SettingRow(label: String, value: String, onClick: (() -> Unit)? = nu
             .background(PixelColors.panel)
             .border(BorderStroke(PixelShape.borderWidth, Color.Black))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(PixelShape.Spacing.md),
+            .padding(PixelShape.Spacing.md)
+            // 行间留白：连续多行设置不贴边（原无底部 padding，行贴行）
+            .padding(bottom = PixelShape.Spacing.xs),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {

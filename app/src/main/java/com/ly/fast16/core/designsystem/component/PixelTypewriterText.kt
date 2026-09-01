@@ -45,6 +45,7 @@ fun PixelTypewriterText(
     charMs: Long = PixelMotion.Pop.TYPE_MS,
     style: TextStyle? = null,
     showCursor: Boolean = true,
+    maxLines: Int = Int.MAX_VALUE,
     onFinished: () -> Unit = {},
 ) {
     var shown by remember(text) { mutableStateOf("") }
@@ -88,6 +89,7 @@ fun PixelTypewriterText(
             } else {
                 style ?: TextStyle.Default
             },
+            maxLines = maxLines,
         )
         if (typing && showCursor && cursorOn) {
             // 像素光标 ▊：8×8 黑块，紧随文字尾部

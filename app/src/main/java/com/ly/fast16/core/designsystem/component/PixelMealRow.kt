@@ -59,14 +59,14 @@ fun PixelMealRow(
 
         Column(modifier = Modifier.weight(1f)) {
             PixelText(text = name, color = PixelColors.white, fontSize = PixelType.Size.xs)
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             PixelText(
                 text = timeLabel,
                 color = PixelColors.yellow,
                 fontSize = PixelType.Size.xs,
                 digital = true,
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             PixelText(
                 text = if (prepMinutes > 0) "备餐 $prepMinutes 分" else "直接开吃",
                 color = PixelColors.gray,
@@ -120,7 +120,7 @@ private fun SmallPixelButton(text: String, tone: SmallTone, onClick: () -> Unit)
                 indication = null,
                 onClick = onClick,
             )
-            .padding(horizontal = PixelShape.Spacing.md, vertical = 4.dp),
+            .padding(horizontal = PixelShape.Spacing.md, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         PixelText(text = text, color = fg, fontSize = PixelType.Size.xs)

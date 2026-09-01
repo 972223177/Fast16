@@ -45,6 +45,8 @@ fun OnboardingRoot(content: @Composable () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settings by settingsStore.settings.collectAsState(initial = null)
+    // settings 未加载（首帧）时不渲染主界面——避免主界面闪现后再弹引导（冷启动闪一下）
+    if (settings == null) return
     val onboardingSeen = settings?.onboardingSeen ?: true
 
     if (!onboardingSeen) {

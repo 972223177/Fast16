@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -35,7 +36,10 @@ fun PixelSlider(
     val litSegments = (valueMinutes / stepMinutes).coerceIn(0, segmentCount)
 
     Column(modifier = modifier) {
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             repeat(segmentCount) { i ->
                 val lit = i < litSegments
                 Box(

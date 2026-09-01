@@ -57,7 +57,10 @@ fun PixelCalendar(
         }
 
         // 周几表头（周一 = 一）
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             WEEKDAYS.forEach { w ->
                 Box(
                     modifier = Modifier.weight(1f).padding(vertical = PixelShape.Spacing.sm),
@@ -77,7 +80,10 @@ fun PixelCalendar(
         while (cells.size % 7 != 0) cells.add(null)
 
         cells.chunked(7).forEach { week ->
-            Row(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 week.forEach { date ->
                     val cell = date?.let { d ->
                         val cks = checked[d].orEmpty()
@@ -114,7 +120,7 @@ private fun NavArrow(symbol: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clickable(onClick = onClick)
-            .padding(horizontal = PixelShape.Spacing.sm, vertical = 4.dp),
+            .padding(horizontal = PixelShape.Spacing.sm, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         PixelText(text = symbol, color = PixelColors.yellow, fontSize = PixelType.Size.md)
@@ -142,11 +148,15 @@ private fun CalendarCell(
             .border(BorderStroke(PixelShape.borderWidth, Color.Black))
             .border(BorderStroke(2.dp, outline))
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            // 内边距 6dp：日期数字不贴格边（原 4dp 过小）
+            .padding(vertical = PixelShape.Spacing.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         PixelText(text = "$day", color = PixelColors.white, fontSize = PixelType.Size.xs, digital = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             dots.forEach { lit ->
                 Box(
                     modifier = Modifier

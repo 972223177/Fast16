@@ -24,10 +24,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -51,6 +53,8 @@ import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
 import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.scheduling.PlanScheduler
+import com.ly.fast16.core.widget.Fast16Widget
+import androidx.glance.appwidget.updateAll
 import com.ly.fast16.domain.model.Meal
 import com.ly.fast16.domain.model.MealPlan
 import com.ly.fast16.domain.model.MealType
@@ -134,15 +138,23 @@ class RecordViewModel(
 
     init {
         viewModelScope.launch {
+            val today = SystemTimeProvider.today()
+            // 统计流预合并（combine 单次最多 5 源）：
+            // 跨月滚动窗口（今起 366 天）= 连续打卡/完成率；近 7 天区间（锚定真实 today）= 柱状图
+            val statsFlow = combine(
+                checkInRepository.watchCompletedDays(today.minusDays(366), today),
+                checkInRepository.watchRange(today.minusDays(6), today),
+            ) { completed, week -> completed to week }
             combine(
                 monthFlow.flatMapLatest { checkInRepository.watchMonth(it) },
+                statsFlow,
                 monthFlow,
                 selectedFlow,
                 selectedFlow.flatMapLatest { date ->
                     if (date == null) flowOf(null) else planRepository.watchPlanByDate(date)
                 },
-            ) { checked, month, selected, planPair ->
-                buildContent(checked, month, selected, planPair)
+            ) { checked, (completedDays, weekChecked), month, selected, planPair ->
+                buildContent(checked, completedDays, weekChecked, month, selected, planPair)
             }.collect { _uiState.value = it }
         }
     }
@@ -182,21 +194,22 @@ class RecordViewModel(
     /** 纯派生：连续天数 / 本月/周完成率 / 近 7 天柱状图 / 选中日打卡集 + 计划存在性 */
     private fun buildContent(
         checked: Map<LocalDate, Set<MealType>>,
+        completedDays: Set<LocalDate>,
+        weekChecked: Map<LocalDate, Set<MealType>>,
         month: YearMonth,
         selected: LocalDate?,
         planPair: Pair<MealPlan, List<Meal>>?,
     ): RecordUiState.Content {
         val today = SystemTimeProvider.today()
-        val completedDays = checked.filterValues { it.size >= 3 }.keys
         val streak = StreakCalculator.computeStreak(completedDays, today)
         val monthRate = StreakCalculator.monthCompletion(completedDays, month)
         // 本周（周一起始，含今天）
         val weekStart = today.minusDays(((today.dayOfWeek.value + 6) % 7).toLong())
         val week = (0L..6L).map { weekStart.plusDays(it) }
         val weekRate = StreakCalculator.weekCompletion(completedDays, week)
-        // 近 7 天柱状图：每天完成餐数（0..3）
+        // 近 7 天柱状图：每天完成餐数（0..3），基于真实 today 区间流（不受显示月份影响）
         val weekBars = (6 downTo 0).map { back ->
-            checked[today.minusDays(back.toLong())]?.size ?: 0
+            weekChecked[today.minusDays(back.toLong())]?.size ?: 0
         }
         return RecordUiState.Content(
             month = month,
@@ -224,6 +237,8 @@ fun RecordScreen(
     val vm: RecordViewModel = koinViewModel()
     val state by vm.uiState.collectAsState()
     val toastText by vm.toast.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showToast by remember { mutableStateOf(false) }
 
     LaunchedEffect(toastText) {
@@ -236,7 +251,13 @@ fun RecordScreen(
         RecordUiState.Loading -> PixelLoading()
         is RecordUiState.Content -> RecordContent(
             state = s,
-            onIntent = vm::onIntent,
+            onIntent = { intent ->
+                vm.onIntent(intent)
+                // 补打卡 / 删计划 → 桌面小组件同步
+                if (intent is RecordIntent.BackfillCheckIn || intent is RecordIntent.DeletePlan) {
+                    scope.launch { Fast16Widget().updateAll(context) }
+                }
+            },
             onEditPlan = onEditPlan,
             modifier = modifier,
         )
@@ -343,45 +364,52 @@ private fun RecordContent(
         state.selected?.let { selectedDate ->
             Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
             PixelCard(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        PixelText(text = selectedDate.toString(), color = PixelColors.white, fontSize = PixelType.Size.xs, digital = true)
-                        Box(
-                            modifier = Modifier
-                                .background(PixelColors.panel)
-                                .border(BorderStroke(PixelShape.borderWidth, Color.Black))
-                                .clickable { onIntent(RecordIntent.TapDate(null)) }
-                                .padding(horizontal = PixelShape.Spacing.md, vertical = PixelShape.Spacing.xs),
-                        ) {
-                            PixelText(text = "关闭", color = PixelColors.white, fontSize = PixelType.Size.xs)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-                    MealType.entries.forEach { type ->
-                        val done = type in state.selectedChecked
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = PixelShape.Spacing.xs),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            PixelText(
-                                text = mealName(type),
-                                color = PixelColors.white,
-                                fontSize = PixelType.Size.xs,
-                                modifier = Modifier.weight(1f),
-                            )
-                            PixelButton(
-                                text = if (done) "已打卡" else "补打卡",
-                                onClick = { onIntent(RecordIntent.BackfillCheckIn(type)) },
-                                primary = false,
-                            )
-                        }
-                    }
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        // 日期加大（数字像素），与设计稿一致
+                                        PixelText(text = selectedDate.toString(), color = PixelColors.white, fontSize = PixelType.Size.sm, digital = true)
+                                        PixelButton(
+                                            text = "关闭",
+                                            onClick = { onIntent(RecordIntent.TapDate(null)) },
+                                            primary = false,
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+                                    MealType.entries.forEachIndexed { index, type ->
+                                        val done = type in state.selectedChecked
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = PixelShape.Spacing.sm),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            PixelText(
+                                                text = mealName(type),
+                                                color = PixelColors.white,
+                                                fontSize = PixelType.Size.xs,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            // 未打卡用蓝底主操作；已打卡灰底描边（与设计稿一致）
+                                            PixelButton(
+                                                text = if (done) "已打卡" else "补打卡",
+                                                onClick = { onIntent(RecordIntent.BackfillCheckIn(type)) },
+                                                primary = !done,
+                                            )
+                                        }
+                                        // 餐间像素分隔线（最后一行无）
+                                        if (index != MealType.entries.lastIndex) {
+                                            Spacer(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(1.dp)
+                                                    .background(Color.Black),
+                                            )
+                                        }
+                                    }
 
                     // 计划管理区（该日有计划时：编辑 / 删除）
                     if (state.hasPlanOnSelected) {
@@ -389,6 +417,7 @@ private fun RecordContent(
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(PixelShape.Spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             PixelButton(
                                 text = "编辑计划",
@@ -396,17 +425,17 @@ private fun RecordContent(
                                 primary = false,
                                 modifier = Modifier.weight(1f),
                             )
-                            // 删除：红色小按钮 → 确认弹窗
+                            // 删除：红色按钮 → 确认弹窗；字号/padding 与 PixelButton 规格对齐（等高不显扁）
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .background(PixelColors.red, PixelShape.stair)
                                     .border(BorderStroke(PixelShape.borderWidth, Color.Black), PixelShape.stair)
                                     .clickable { showDeleteConfirm = true }
-                                    .padding(horizontal = PixelShape.Spacing.md, vertical = PixelShape.Spacing.sm),
+                                    .padding(horizontal = PixelShape.Spacing.lg, vertical = PixelShape.Spacing.sm),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                PixelText(text = "删除计划", color = PixelColors.bg, fontSize = PixelType.Size.xs)
+                                PixelText(text = "删除计划", color = PixelColors.bg, fontSize = PixelType.Size.sm)
                             }
                         }
                     }

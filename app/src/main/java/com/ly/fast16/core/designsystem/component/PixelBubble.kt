@@ -26,6 +26,7 @@ import com.ly.fast16.core.designsystem.token.PixelMotion
 import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 像素气泡（设计方案 §8.6）：白底 + 2px 黑描边 + 三角尾巴；文案与通知同源（SpeechCatalog）。
@@ -42,9 +43,9 @@ fun PixelBubble(
     var frame by remember { mutableIntStateOf(0) }
     LaunchedEffect(text) {
         frame = 0
-        delay(PixelMotion.Pop.STEP_MS)
+        delay(PixelMotion.Pop.STEP_MS.milliseconds)
         frame = 1
-        delay(PixelMotion.Pop.STEP_MS)
+        delay(PixelMotion.Pop.STEP_MS.milliseconds)
         frame = 2
     }
     val scale = when (frame) {

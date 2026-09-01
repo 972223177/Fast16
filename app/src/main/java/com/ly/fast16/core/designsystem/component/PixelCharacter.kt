@@ -168,11 +168,11 @@ private val CH_EAT2 = CH_IDLE1.toMutableList().apply {
     this[12] = ".KBKBBBBBBBBKBK."
 }
 
-/** 休息帧 1 */
+/** 休息帧 1（前三行补足 16 字符并与身体中线对齐——原 14 字符被 PixelSprite 左对齐致头部左偏） */
 private val CH_REST1 = listOf(
-    "K....HHHH....K",
-    "K...HHHHHH...K",
-    "K..HHHHHHHH..K",
+    ".K....HHHH....K.",
+    ".K...HHHHHH...K.",
+    ".K..HHHHHHHH..K.",
     "..HHSSSSSSSSHH..",
     "..HSSSSSSSSSSH..",
     "..HSKSSSSSSKSH..",

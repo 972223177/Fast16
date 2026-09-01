@@ -1,13 +1,23 @@
 package com.ly.fast16.core.navigation
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Scaffold
@@ -15,7 +25,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -27,6 +43,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.ly.fast16.core.designsystem.component.ICON_BOWL
 import com.ly.fast16.core.designsystem.component.PixelSprite
 import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.token.PixelColors
@@ -124,7 +141,7 @@ private fun NavHostController.navigateTab(route: Any) {
     }
 }
 
-/** 像素风底部导航栏：像素图标 + 文字，选中项主黄描边（原型 .app-tabs / .tab） */
+/** 像素风底部导航栏：像素图标+文字，动态滚动地形背景，选中项主黄描边+黄底（原型 .app-tabs / .tab） */
 @Composable
 private fun PixelBottomBar(
     currentDestination: NavDestination?,
@@ -137,45 +154,161 @@ private fun PixelBottomBar(
         Triple("设置", SettingsRoute, TAB_ICON_SETTINGS),
     )
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .background(PixelColors.panel)
             .border(BorderStroke(PixelShape.borderWidth, Color.Black))
-            .padding(PixelShape.Spacing.sm),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
+            .height(80.dp),
     ) {
-        tabs.forEach { (label, route, icon) ->
-            val selected = currentDestination?.hierarchy?.any { it.hasRoute(route::class) } == true
-            val borderColor = if (selected) PixelColors.yellow else Color.Transparent
-            val fg = if (selected) PixelColors.yellow else PixelColors.gray
-            Column(
-                modifier = Modifier
-                    .clickable { onSelect(route) }
-                    .border(BorderStroke(PixelShape.borderWidth, borderColor))
-                    .padding(
-                        horizontal = PixelShape.Spacing.md,
-                        vertical = PixelShape.Spacing.sm,
-                    ),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(PixelShape.Spacing.xs),
-            ) {
-                PixelSprite(
-                    rows = icon,
-                    palette = mapOf('K' to fg),
-                    modifier = Modifier.size(18.dp),
-                    contentDescription = "$label 标签",
-                )
-                PixelText(
-                    text = label,
-                    color = fg,
-                    fontSize = PixelType.Size.xs,
+        // 动态像素背景：主题元素（时钟/饭碗/星星）无限横滚，铺满整条底栏作为 tab 背景
+        PixelScrollBackdrop(
+            modifier = Modifier.fillMaxSize(),
+        )
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            tabs.forEach { (label, route, icon) ->
+                val selected = currentDestination?.hierarchy?.any { it.hasRoute(route::class) } == true
+                val borderColor = if (selected) PixelColors.yellow else Color.Transparent
+                val fg = if (selected) PixelColors.yellow else PixelColors.gray
+                Row(
+                    modifier = Modifier
+                        .clickable { onSelect(route) }
+                        .then(
+                            if (selected) {
+                                Modifier.background(PixelColors.yellow.copy(alpha = 0.20f))
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .border(BorderStroke(PixelShape.borderWidth, borderColor))
+                        .padding(
+                            horizontal = PixelShape.Spacing.lg,
+                            vertical = PixelShape.Spacing.md,
+                        ),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PixelSprite(
+                        rows = icon,
+                        palette = mapOf('K' to fg),
+                        modifier = Modifier.size(20.dp),
+                        contentDescription = "$label 标签",
+                    )
+                    Spacer(Modifier.size(PixelShape.Spacing.sm))
+                    PixelText(
+                        text = label,
+                        color = fg,
+                        fontSize = PixelType.Size.sm,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 轮播像素背景：主题元素（时钟/饭碗/星星）铺满整条底栏，无限横向滚动（无缝循环）。
+ * 动画位移一个 tile 宽后回绕，绘制 2 个 tile 保证全程覆盖。
+ */
+@Composable
+private fun PixelScrollBackdrop(modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier = modifier) {
+        // tile 宽 = 整个底栏宽：一组元素从右侧进入，完整横穿底栏，左侧出去
+        val density = LocalDensity.current
+        val tileWidthPx = with(density) { maxWidth.toPx() }
+        val infinite = rememberInfiniteTransition(label = "tabBackdrop")
+        val scroll by infinite.animateFloat(
+            initialValue = 0f,
+            targetValue = -tileWidthPx,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 6000, easing = LinearEasing),
+            ),
+            label = "tabBackdropScroll",
+        )
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { translationX = scroll },
+        ) {
+            // Canvas 尺寸即底栏宽（fillMaxSize）；画 2 组 tile，平移一个 bar 宽后第二组顶上来无缝回绕
+            val tileW = size.width
+            repeat(2) { i ->
+                val ox = i * tileW
+                BACKDROP_SPRITES.forEach { sprite ->
+                    drawSpriteGrid(
+                        rows = sprite.rows,
+                        origin = Offset(ox + sprite.xRatio * tileW, sprite.y.toPx()),
+                        cellPx = sprite.cell.toPx(),
+                        color = sprite.color,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 背景元素：字符网格 + 相对 tile 宽度的横向比例位置 + 纵向 dp 与单格尺寸 */
+private data class BackdropSprite(
+    val rows: List<String>,
+    val xRatio: Float,
+    val y: Dp,
+    val cell: Dp,
+    val color: Color,
+)
+
+/** 将字符网格逐格绘制为像素方块（'.' 为透明） */
+private fun DrawScope.drawSpriteGrid(
+    rows: List<String>,
+    origin: Offset,
+    cellPx: Float,
+    color: Color,
+) {
+    rows.forEachIndexed { r, line ->
+        line.forEachIndexed { c, ch ->
+            if (ch != '.') {
+                drawRect(
+                    color = color,
+                    topLeft = Offset(origin.x + c * cellPx, origin.y + r * cellPx),
+                    size = Size(cellPx, cellPx),
                 )
             }
         }
     }
 }
+
+/** 像素时钟（8×8，3 点指针）——断食倒计时主题 */
+private val BACKDROP_CLOCK = listOf(
+    "..KKKK..",
+    ".K....K.",
+    "K..K...K",
+    "K..K...K",
+    "K..K...K",
+    "K..K...K",
+    ".K....K.",
+    "..KKKK..",
+)
+
+/** 像素星星（5×4）——完成/激励 */
+private val BACKDROP_SPARK = listOf(
+    "..Y..",
+    ".Y.Y.",
+    "..Y..",
+    ".....",
+)
+
+/** 背景元素布局（tile 宽 = 底栏全宽，cell 4dp；低透明度贴边分布，tab 无底衬也不抢文字） */
+private val BACKDROP_SPRITES = listOf(
+    // 时钟：左侧贴顶
+    BackdropSprite(BACKDROP_CLOCK, 0.04f, 8.dp, 4.dp, PixelColors.blue.copy(alpha = 0.18f)),
+    // 星星：中上
+    BackdropSprite(BACKDROP_SPARK, 0.50f, 4.dp, 4.dp, PixelColors.yellow.copy(alpha = 0.20f)),
+    // 饭碗：右侧偏下（复用 PixelCharacter 餐次碗图标）
+    BackdropSprite(ICON_BOWL, 0.82f, 48.dp, 4.dp, PixelColors.white.copy(alpha = 0.14f)),
+)
 
 /** 底部 Tab 像素图标（16×16 点阵，K=前景色；原型 .tab .t-ico 18×18） */
 private val TAB_ICON_HOME = listOf(

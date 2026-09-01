@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,9 +41,11 @@ import androidx.lifecycle.viewModelScope
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelLoading
+import com.ly.fast16.core.designsystem.component.PixelPageTitle
 import com.ly.fast16.core.designsystem.component.PixelSectionTitle
 import com.ly.fast16.core.designsystem.component.PixelStepper
 import com.ly.fast16.core.designsystem.component.PixelText
+import com.ly.fast16.core.designsystem.component.PixelVerticalScrollbar
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
@@ -243,17 +247,22 @@ private fun SettingsContent(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter,
     ) {
+    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .widthIn(max = PixelShape.contentMaxWidth)
-            .verticalScroll(rememberScrollState())
-            .padding(PixelShape.Spacing.lg),
+            .verticalScroll(scrollState)
+            .padding(
+                start = PixelShape.Spacing.lg,
+                end = PixelShape.Spacing.lg,
+                top = PixelShape.Spacing.lg,
+                bottom = PixelShape.Spacing.xxl,
+            ),
         horizontalAlignment = Alignment.Start,
     ) {
-        PixelText(text = "SETTINGS", color = PixelColors.white, fontSize = PixelType.Size.xs, digital = true)
-        Spacer(modifier = Modifier.height(2.dp))
-        PixelText(text = "偏好与关于", color = PixelColors.gray, fontSize = PixelType.Size.xs)
+        // 页面标题规范：打字机大标题 + 副标题（PixelPageTitle）
+        PixelPageTitle(title = "SETTINGS", subtitle = "偏好与关于")
         Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
         Box(
             modifier = Modifier
@@ -339,6 +348,14 @@ private fun SettingsContent(
         // 关于
         SettingRow(label = "关于 Fast16", value = "v0.1.0")
     }
+    // 像素滚动条：矮屏内容被裁时提示可滚动（右上端、贯穿高度）
+    PixelVerticalScrollbar(
+        scrollState = scrollState,
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .padding(vertical = PixelShape.Spacing.sm),
+    )
     }
 
     // 提醒模式选择弹窗（像素 chip，选中黄底黑字）
@@ -381,7 +398,7 @@ private fun SettingsContent(
         }
     }
 
-    // 数值设置 stepper 弹窗（偏好可配，写 SettingsStore）
+    // 数值设置 stepper 弹窗（偏好可配，写 SettingsStore；+/- 只调数值，【完成】才保存关闭）
     editing?.let { e ->
         NumericSettingDialog(
             title = numericTitle(e),
@@ -390,7 +407,7 @@ private fun SettingsContent(
             min = numericRange(e).first,
             max = numericRange(e).last,
             step = numericStep(e),
-            onValueChange = { v ->
+            onConfirm = { v ->
                 onSetSetting(numericIntent(e, v))
                 editing = null
             },
@@ -399,7 +416,10 @@ private fun SettingsContent(
     }
 }
 
-/** 数值设置弹窗：像素 stepper ± 步进（clamp 到范围）+ 完成 */
+/**
+ * 数值设置弹窗：像素 stepper ± 步进（clamp 到范围）+ 完成。
+ * 局部 state：+/- 仅调整预览值（不落库、不关闭）；【完成】才回调 [onConfirm] 保存并关闭。
+ */
 @Composable
 private fun NumericSettingDialog(
     title: String,
@@ -408,18 +428,25 @@ private fun NumericSettingDialog(
     min: Int,
     max: Int,
     step: Int,
-    onValueChange: (Int) -> Unit,
+    onConfirm: (Int) -> Unit,
     onClose: () -> Unit,
 ) {
+    var current by remember { mutableIntStateOf(value) }
     PixelDialog(onDismiss = onClose, title = title) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             PixelStepper(
-                value = "$value$valueSuffix",
-                onDecrease = { onValueChange((value - step).coerceAtLeast(min)) },
-                onIncrease = { onValueChange((value + step).coerceAtMost(max)) },
+                value = "$current",
+                unit = valueSuffix,
+                onDecrease = { current = (current - step).coerceAtLeast(min) },
+                onIncrease = { current = (current + step).coerceAtMost(max) },
             )
             Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-            PixelButton(text = "完成", onClick = onClose, primary = true, modifier = Modifier.fillMaxWidth())
+            PixelButton(
+                text = "完成",
+                onClick = { onConfirm(current) },
+                primary = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

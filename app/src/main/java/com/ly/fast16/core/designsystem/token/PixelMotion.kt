@@ -22,10 +22,14 @@ object PixelMotion {
         const val TIMES: Int = 3
     }
 
-    /** 弹窗弹出：60ms × 3 步（scale 0 → 1 阶跃） */
+    /** 弹窗弹出：60ms × N 步阶跃（无插值） */
     object Pop {
         const val STEP_MS: Long = 60
         const val STEPS: Int = 3
+        /** 打字机帧速：60ms/字（Undertale / Stardew Valley 对话框 typewriter） */
+        const val TYPE_MS: Long = 60
+        /** 窗口收起阶跃步数（退场 scale 收起，60ms × 4，关闭快于展开） */
+        const val EXIT_STEPS: Int = 4
     }
 
     /** 页面切换 wipe：200ms */

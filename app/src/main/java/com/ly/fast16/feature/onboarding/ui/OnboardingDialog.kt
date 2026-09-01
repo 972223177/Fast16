@@ -19,6 +19,7 @@ import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelDialog
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
 import com.ly.fast16.core.designsystem.component.PixelText
+import com.ly.fast16.core.designsystem.component.PixelTypewriterText
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
 import com.ly.fast16.core.designsystem.token.PixelColors
@@ -80,7 +81,8 @@ fun OnboardingDialog(onDismiss: () -> Unit) {
                 PixelText(text = "16h 断食", color = PixelColors.red, fontSize = PixelType.Size.xs)
             }
             Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-            PixelText(
+            // 像素对话框灵魂：主流程文案打字机逐字
+            PixelTypewriterText(
                 text = "记录早餐 → 自动排午/晚 → 到点提醒 → 吃完打卡",
                 color = PixelColors.white,
                 fontSize = PixelType.Size.xs,

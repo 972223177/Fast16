@@ -10,14 +10,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +39,8 @@ import com.ly.fast16.data.local.SettingsStore
 import com.ly.fast16.core.designsystem.component.PixelBubble
 import com.ly.fast16.core.designsystem.component.PixelButton
 import com.ly.fast16.core.designsystem.component.PixelCard
+import com.ly.fast16.core.designsystem.component.PixelDivider
+import com.ly.fast16.core.designsystem.component.PixelPageScaffold
 import com.ly.fast16.core.designsystem.component.PixelCharacter
 import com.ly.fast16.core.designsystem.component.PixelLoading
 import com.ly.fast16.core.designsystem.component.PixelMealRow
@@ -55,7 +53,6 @@ import com.ly.fast16.core.designsystem.component.PixelStepper
 import com.ly.fast16.core.designsystem.component.PixelProgressBar
 import com.ly.fast16.core.designsystem.component.PixelPageTitle
 import com.ly.fast16.core.designsystem.component.PixelText
-import com.ly.fast16.core.designsystem.component.PixelVerticalScrollbar
 import com.ly.fast16.core.designsystem.component.PixelToast
 import com.ly.fast16.core.designsystem.component.PreviewPixel
 import com.ly.fast16.core.designsystem.theme.PixelTheme
@@ -342,11 +339,10 @@ class HomeViewModel(
         val bubble = bubbleText(now, character, reconciled)
         val mealUis = reconciled.map { meal ->
             val zone = SystemTimeProvider.zone
-            val t = Time.timeOf(meal.mealTime, zone)
             MealUi(
                 type = meal.type,
                 name = SpeechCatalog.mealName(meal.type),
-                timeLabel = "%02d:%02d".format(t.hour, t.minute),
+                timeLabel = Time.hhmm(meal.mealTime, zone),
                 prepMinutes = meal.prepMinutes,
                 checkedIn = meal.type in checkedSet,
                 hasMeal = true,
@@ -355,8 +351,7 @@ class HomeViewModel(
         // 顶部副标题：「今天 · 早餐 08:00 ｜ 窗口结束 16:00」（原型 home-date）
         val subtitle = if (hasPlan) {
             val bf = reconciled.firstOrNull { it.type == MealType.BREAKFAST }?.let {
-                val t = Time.timeOf(it.mealTime, SystemTimeProvider.zone)
-                "%02d:%02d".format(t.hour, t.minute)
+                Time.hhmm(it.mealTime, SystemTimeProvider.zone)
             }
             val end = Time.timeOf(plan.windowEnd, SystemTimeProvider.zone)
             "今天 · 早餐 ${bf ?: "--:--"} ｜ 窗口结束 %02d:%02d".format(end.hour, end.minute)
@@ -506,26 +501,11 @@ private fun HomeContent(
 ) {
     // 备餐编辑弹窗当前目标餐次（null = 未打开）
     var editingPrep by remember { mutableStateOf<MealType?>(null) }
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .widthIn(max = PixelShape.contentMaxWidth),
-    ) {
-        // 固定标题栏：不随内容滚动出屏（TODAY + streak + 分隔线）
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = PixelShape.Spacing.lg,
-                    end = PixelShape.Spacing.lg,
-                    top = PixelShape.Spacing.lg,
-                ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+    PixelPageScaffold(
+        modifier = modifier,
+        headerAlignment = Alignment.CenterHorizontally,
+        contentAlignment = Alignment.CenterHorizontally,
+        header = {
             // 头部：TODAY + 副标题 + streak chip（原型 home-head / home-streak）
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -538,35 +518,9 @@ private fun HomeContent(
             }
 
             Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
-            HorizontalRule()
-        }
-
-        // 滚动区（标题栏以下，weight 占满剩余高度）
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) {
-        val scrollState = rememberScrollState()
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(
-                    state = scrollState,
-                    // overscrollEffect = null 关掉边缘拉伸：① 内容本就一屏可见时，滑动不再产生
-                    // 「还能往下滚」的错觉，消除滚动交互负担；② 边缘拉伸属 M3 平滑动效，与像素风
-                    // 阶跃规范冲突。矮屏真需要滚动时滚动本身照常工作，只是没有回弹。
-                    overscrollEffect = null,
-                )
-                .padding(
-                    start = PixelShape.Spacing.lg,
-                    end = PixelShape.Spacing.lg,
-                    top = PixelShape.Spacing.lg,
-                    // 底部与 PixelBottomBar 相邻，底栏自带 padding，此处无需再留 xxl
-                    bottom = PixelShape.Spacing.lg,
-                ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+            PixelDivider()
+        },
+    ) {
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
         // 角色「小健」+ 气泡（文案同源 SpeechCatalog）——高频 live 驱动，每秒仅本行重组
@@ -701,19 +655,6 @@ private fun HomeContent(
                 }
             }
         }
-    }
-        // 像素滚动条：仅在内容真的溢出时出现（一屏可见优化后典型态不溢出 → 不再画无意义的空轨道）
-        if (scrollState.maxValue > 0) {
-            PixelVerticalScrollbar(
-                scrollState = scrollState,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .padding(vertical = PixelShape.Spacing.sm),
-            )
-        }
-        }
-    }
     }
 
     // 备餐编辑弹窗：tile 上备餐文字可点 → 打开；±5 分钟（0–180），保存后重排闹钟
@@ -883,17 +824,6 @@ private fun StreakChip(streak: Int, onClick: () -> Unit) {
     ) {
         PixelText(text = "🔥 $streak 天", color = PixelColors.yellow, fontSize = PixelType.Size.xs)
     }
-}
-
-/** 分隔线（原型 hr：2px 面板深色） */
-@Composable
-private fun HorizontalRule() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(2.dp)
-            .background(PixelColors.panel.copy(alpha = 0.6f)),
-    )
 }
 
 /** 断食剩余（时:分:秒，原型 03:20:12 大计时） */

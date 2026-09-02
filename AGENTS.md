@@ -11,7 +11,8 @@
 - **核心玩法**：记录早餐时间 → 自动生成午/晚候选方案 → 用户选取/微调 → 生成当日计划 → 到点提醒「备餐 / 开吃」→ 打卡记录与统计。
 - **技术基线**：Kotlin 2.2 + Jetpack Compose + Material3；`minSdk 24`、`targetSdk 37`、`applicationId com.ly.fast16`；当前为单 Gradle 模块 `:app`。构建链：Gradle 9.7.1 + AGP 9.3.0（内置 Kotlin）+ JDK 21。
 - **产品基调**：深色像素风、纯本地离线、无账号/无后端、仅中文。
-- **当前状态**：M0 刚起步，现有代码仍是 Android 模板（`MainActivity` + 默认主题），尚未按规格落地像素设计系统、Room、DataStore、Koin、Navigation 等。
+- **当前状态**：核心功能已落地——像素设计系统（PixelTokens/PixelTheme）、Room + DataStore、Koin、类型安全导航、Home/Create/Record/Settings 四页、桌面小组件、通知/精确闹钟/重启自愈；feature 内部已按「NIA 扁平多文件」分层（见 §6）。
+- **文档时效**：`docs/8-16饮食法App-*.md` 多为 M0 定稿，部分章节（结构/命名/页面组织）与实际实现存在偏差，**以 AGENTS.md 硬性规则 + 代码实际为准**；规格语义类内容（决策、领域算法、令牌值）仍以 docs 为准。
 
 ---
 
@@ -59,19 +60,24 @@
 
 ---
 
-## 4. 当前代码状态与差距
+## 4. 当前代码状态
 
 ```text
 app/src/main/java/com/ly/fast16/
-├── MainActivity.kt          # 模板 Hello Android，未接业务
-└── ui/theme/                # 默认 Compose 主题，未落地 PixelTokens
+├── Fast16App.kt / MainActivity.kt   # Application（Koin 装配）+ 入口 Activity
+├── core/                             # 跨层共享：designsystem（Pixel*）/ character(SpeechCatalog)/
+│                                     #   device/time/plan/scheduling/notification/receiver/widget/system/di/navigation
+├── domain/                           # 纯 Kotlin 领域层：model / schedule / stats / repository 接口 / usecase
+├── data/                             # Room(local) + repository 实现
+└── feature/                          # 每 feature 一包，内部 ui/ 按职责拆多文件（见 §6）
+    ├── home/{ui}                     # HomeIntent/HomeUiState/HomeViewModel/HomeScreen/HomeContent/HomeWidgets/HomePreview
+    ├── create/{ui}
+    ├── record/{ui}
+    ├── settings/{ui}
+    └── onboarding/{ui}
 ```
 
-已知差距（不要在未读文档时擅自“补全”）：
-
-- `gradle/libs.versions.toml` 已按基建文档与最新可用稳定版对齐（AGP `9.3.0`、Kotlin `2.2.20`、Compose BOM `2026.08.00`、Room `3.0.1` 即 `androidx.room3:room3-*`、Koin `4.2.2` 等），依赖已通过 `sync` 验证可解析；maven 仓库走阿里云镜像。
-- 尚未引入 Room、DataStore、Koin、Navigation、Glance、AlarmManager 相关代码。
-- 尚未建立 `core/`、`domain/`、`data/`、`feature/` 目录结构。
+依赖方向：`feature → domain ← data`，feature 可依赖 `core/`；feature 之间禁止横向依赖。
 
 ---
 
@@ -109,6 +115,15 @@ app/src/main/java/com/ly/fast16/
   - **职责边界**：取「当前系统时间/时区」等系统能力走 `core/device/SystemTimeProvider`；纯日期换算（确定性计算，不依赖系统时间）保持纯 JVM 工具（如 `core/time/TimeUtils`，无 Android 依赖、domain 可安全引用），两者不重复造轮子。
 - **本地优先/隐私**：V1 不联网、不上传、无账号；数据只存 Room + DataStore。
 - **代码规范（import 优先，禁 FQN）**：任何类/函数必须**先 `import` 再使用**，禁止在代码体中写类名全量引用（FQN）——如 `com.ly.fast16.feature.home.ui.HomeViewModel()`、`androidx.compose.ui.graphics.Color.Black`、`org.koin.androidx.compose.koinViewModel()` 一律改为 import 后短名；KDoc 链接（`[ClassName]`）同样用 import 后的短名。仅 `package`/`import` 语句本身，以及描述旧包名/第三方名的注释文字可保留全限定形式。完整 Kotlin 代码规范与命名规范（命名、源文件组织、格式化、KDoc、惯用法）见 [`docs/kotlin-code-style.md`](docs/kotlin-code-style.md)。
+- **Feature 内部文件组织（NIA 扁平多文件，2026-09 定稿）**：每个 feature 的 `ui/` 包内**按职责拆多文件、同包扁平**（不建 `viewmodel/`/`model/` 子目录），参考 Now in Android 的文件组织：
+  - `XxxIntent.kt`：用户意图 sealed interface（契约）；
+  - `XxxUiState.kt`：UiState sealed interface + UI 模型 + 一次性事件；
+  - `XxxViewModel.kt`：VM（订阅/副作用）；纯 Reducer/派生若独立性强可同文件或单独 `XxxReducer.kt`；
+  - `XxxScreen.kt`：**入口**——仅做 VM 桥接（koinViewModel + collect + 事件分发）+ Toast/Overlay/权限 launcher 等宿主职责；
+  - `XxxContent.kt`：**主组合**——纯渲染，**不得持有 VM**（Preview 直接喂假状态）；
+  - `XxxWidgets.kt`：页面私有组件（跨文件引用提 `internal`）；
+  - `XxxPreview.kt`：@Preview + 假数据。
+  **禁止**把 Intent/UiState/ViewModel/Screen/私有组件堆进单一大文件；**禁止** UI composable 内 `koinViewModel`（一律收口到入口层）；跨文件复用将文件级 `private` 提为 `internal`（同包可见，不对外泄漏）。新增 feature 一律按此模板组织。
 
 ---
 

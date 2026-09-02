@@ -194,6 +194,11 @@ Onboarding：不作为路由，由根层 overlay 触发（onboarding_seen==false
 > 写库 / 排程 / 通知+轻震等副作用在 ViewModel 内调 UseCase，一次性事件（跳转/Toast）走 `Channel`。详见设计方案 §5.2。
 > UI 统一：`PixelTheme { Scaffold { ... } }`，`collectAsStateWithLifecycle` 订阅 State。
 
+> **文件组织（2026-09 定稿，AGENTS.md §6）**：每个 feature 的 `ui/` 包**同包扁平、按职责拆多文件**（NIA 风格，不建子目录）：
+> `XxxIntent.kt`（契约）/ `XxxUiState.kt`（State + UI 模型 + 一次性事件）/ `XxxViewModel.kt`（VM + Reducer）/
+> `XxxScreen.kt`（入口：仅 VM 桥接 + Toast/Overlay）/ `XxxContent.kt`（主组合，纯渲染无 VM）/ `XxxWidgets.kt`（页面私有组件）/ `XxxPreview.kt`。
+> **禁止单文件堆叠** Intent/State/VM/UI；UI composable 不持有 VM（收口到入口层）；跨文件复用提 `internal`。
+
 **角色资产基线（UI 原型 v0.1 定稿）**：Q 版人形 16×20，蓝色运动服（`#41a6f6`）+ 黄纽扣；肤色/发色为角色专属色（非 UI 令牌）；
 待机动效 = 自然眨眼（约 3.1s 闭 1 帧）+ 呼吸起伏（约 1.3s 沉 1px）；备餐/进食/休息配道具帧动画（锅/碗筷/星星）；
 角色渲染 `FilterQuality.none` + 整数倍缩放。

@@ -1,5 +1,6 @@
 package com.ly.fast16.feature.onboarding.ui
 
+import android.app.Activity
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,36 +33,54 @@ import org.koin.compose.koinInject
 private const val REQ_NOTIFICATION_PERMISSION = 1001
 
 /**
- * 首次启动引导（设计方案 §8.8 / 流程图 §2）：
- * 根层 overlay（非路由）：onboardingSeen==false 时显示 8:16 说明弹窗；
- * 关闭（知道/跳过）均置 seen=true；**关闭后**触发通知权限申请（33+ 运行时，compat §0）。
+ * 首启统一 gate（设计方案 §8.8 / 合规 §0）：单层全屏向导承载两段式首启——
+ * 1) privacyAccepted==false：向导含「隐私与条款」首步（意图说明 + 全文入口；
+ *    同意写 privacyAccepted 并进入后续概念页，不同意退出应用；条款页不可跳过）；
+ * 2) onboardingSeen==false（已同意隐私）：直接从概念页开始的 4 步引导。
+ * 完成（末页开始使用 / 中途跳过）→ 写 onboardingSeen + 触发通知权限申请（33+）。
+ * 两 flag 均通过 → 渲染主界面。单页 8:16 弹窗 [OnboardingDialog] 保留给设置页重看。
  */
 @Composable
-fun OnboardingRoot(content: @Composable () -> Unit) {
+fun StartupGateRoot(content: @Composable () -> Unit) {
     val settingsStore = koinInject<SettingsStore>()
     // IN-02：复用 Koin 单例（避免每次 new），申请前判 isGranted（已授权不再弹系统框）
     val notificationPermission = koinInject<NotificationPermission>()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settings by settingsStore.settings.collectAsState(initial = null)
-    // settings 未加载（首帧）时不渲染主界面——避免主界面闪现后再弹引导（冷启动闪一下）
+    // settings 未加载（首帧）时不渲染主界面——避免向导闪现后再进入（冷启动闪一下）
     if (settings == null) return
+    val privacyAccepted = settings?.privacyAccepted ?: false
     val onboardingSeen = settings?.onboardingSeen ?: true
 
-    if (!onboardingSeen) {
-        OnboardingDialog(
-            onDismiss = {
-                scope.launch { settingsStore.setOnboardingSeen(true) }
-                // 通知权限申请时机：首启引导关闭后（33+，仅未授权时申请）
-                (context as? ComponentActivity)?.let { activity ->
-                    if (!notificationPermission.isGranted) {
-                        notificationPermission.launchRequest(activity, REQ_NOTIFICATION_PERMISSION)
-                    }
-                }
-            },
-        )
+    // 引导完成（含跳过）：写 seen + 申请通知权限（33+，未授权时）
+    val finishGuide: () -> Unit = {
+        scope.launch { settingsStore.setOnboardingSeen(true) }
+        (context as? ComponentActivity)?.let { activity ->
+            if (!notificationPermission.isGranted) {
+                notificationPermission.launchRequest(activity, REQ_NOTIFICATION_PERMISSION)
+            }
+        }
     }
-    content()
+
+    when {
+        // 尚未同意隐私：向导含条款首步（同意后才能进入概念页；不同意退出应用）
+        !privacyAccepted -> {
+            OnboardingGuide(
+                consentMode = true,
+                onConsent = { scope.launch { settingsStore.setPrivacyAccepted(true) } },
+                onExit = { (context as? Activity)?.finish() },
+                onFinish = finishGuide,
+            )
+            return
+        }
+        // 已同意但未完成引导：跳过条款页，直接从概念页开始
+        !onboardingSeen -> {
+            OnboardingGuide(onFinish = finishGuide)
+            return
+        }
+        else -> content()
+    }
 }
 
 /** 8:16 说明弹窗（可被设置页「查看 8:16 说明」重看） */

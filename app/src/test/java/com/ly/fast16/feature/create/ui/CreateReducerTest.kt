@@ -1,5 +1,6 @@
 package com.ly.fast16.feature.create.ui
 
+import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.time.Time
 import com.ly.fast16.data.local.AppSettings
 import com.ly.fast16.domain.model.Meal
@@ -18,7 +19,8 @@ import java.time.ZoneId
 class CreateReducerTest {
 
     private val zone: ZoneId = ZoneId.of("Asia/Shanghai")
-    private val today: LocalDate = LocalDate.of(2026, 8, 31)
+    // 相对真实今天（ShiftDate 用 SystemTimeProvider.today() 判「不可早于今天」；固定日期会随时间过期）
+    private val today: LocalDate = SystemTimeProvider.today()
 
     private val settings = AppSettings(
         windowHours = 8,

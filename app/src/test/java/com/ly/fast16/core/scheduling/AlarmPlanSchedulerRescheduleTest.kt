@@ -1,6 +1,7 @@
 package com.ly.fast16.core.scheduling
 
 import android.app.AlarmManager
+import com.ly.fast16.core.device.SystemTimeProvider
 import com.ly.fast16.core.system.ExactAlarmGate
 import com.ly.fast16.core.time.Time
 import com.ly.fast16.domain.model.Meal
@@ -29,7 +30,8 @@ import java.time.ZoneId
 class AlarmPlanSchedulerRescheduleTest {
 
     private val zone: ZoneId = ZoneId.of("Asia/Shanghai")
-    private val today: LocalDate = LocalDate.of(2026, 9, 1)
+    // 相对真实今天（rescheduleAll 用 SystemTimeProvider.today() 过滤 ACTIVE 计划；固定日期会随时间过期）
+    private val today: LocalDate = SystemTimeProvider.today()
 
     private class FakePlanRepository(
         private val plans: List<Pair<MealPlan, List<Meal>>>,

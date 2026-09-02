@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import android.os.SystemClock
 import com.ly.fast16.core.designsystem.component.LegalAssets
 import com.ly.fast16.core.designsystem.component.LegalDialog
 import com.ly.fast16.core.designsystem.component.PixelButton
@@ -36,6 +38,7 @@ import com.ly.fast16.core.designsystem.component.PixelText
 import com.ly.fast16.core.designsystem.token.PixelColors
 import com.ly.fast16.core.designsystem.token.PixelShape
 import com.ly.fast16.core.designsystem.token.PixelType
+import com.ly.fast16.core.widget.WidgetPinner
 import com.ly.fast16.data.local.FontMode
 import com.ly.fast16.domain.model.ReminderMode
 
@@ -59,6 +62,30 @@ internal fun SettingsContent(
     var showPrivacy by remember { mutableStateOf(false) }
     var showAgreement by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    // 桌面小组件：纯行为判定（官方 isRequestPinSupported + requestPin 返回值 + 中性兜底）
+    val appContext = context.applicationContext
+    var widgetHint by remember { mutableStateOf<String?>(null) }
+    // 防连点（仅防双击；面板延迟期间用户重试会自然走到能力判定分支）
+    var lastPinAt by remember { mutableLongStateOf(0L) }
+    val onAddWidget: () -> Unit = {
+        val now = SystemClock.elapsedRealtime()
+        when {
+            // 双击防抖
+            now - lastPinAt < WIDGET_PIN_DEBOUNCE_MS -> Unit
+            // 已存在 → 不重复弹添加面板
+            WidgetPinner.isPinned(appContext) -> widgetHint = WIDGET_ALREADY
+            // 官方行为判定：默认桌面不支持 requestPin 流程
+            !WidgetPinner.isRequestPinSupported(appContext) -> widgetHint = WIDGET_UNSUPPORTED
+            // requestPin false → 设备/桌面不支持自动添加，如实提示
+            !WidgetPinner.requestPin(appContext) -> widgetHint = WIDGET_UNSUPPORTED
+            // true → 已请求（不断言面板已弹出；若始终无面板，说明桌面不支持）
+            else -> {
+                lastPinAt = now
+                widgetHint = WIDGET_REQUESTED
+            }
+        }
+    }
 
     PixelPageScaffold(
         modifier = modifier,
@@ -128,6 +155,13 @@ internal fun SettingsContent(
             value = if (state.notificationGranted) "已授权" else "未授权",
             onClick = { if (!state.notificationGranted) onRequestNotification() },
         )
+
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
+
+        // 分区：桌面小组件（跨 ROM 主动添加引导——ColorOS 等桌面组件库索引不到第三方 widget）
+        PixelSectionTitle(text = "桌面小组件")
+        Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+        SettingsActionRow(label = "添加到桌面", onClick = onAddWidget)
 
         Spacer(modifier = Modifier.height(PixelShape.Spacing.lg))
 
@@ -260,6 +294,22 @@ internal fun SettingsContent(
             onDismiss = { showAgreement = false },
         )
     }
+
+    // 桌面小组件添加结果提示（成功 / 已存在 / 引导手动添加）
+    widgetHint?.let { hint ->
+        PixelDialog(onDismiss = { widgetHint = null }, title = "桌面小组件") {
+            Column {
+                PixelText(text = hint, color = PixelColors.white, fontSize = PixelType.Size.sm)
+                Spacer(modifier = Modifier.height(PixelShape.Spacing.md))
+                PixelButton(
+                    text = "好",
+                    onClick = { widgetHint = null },
+                    primary = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -390,3 +440,11 @@ private fun reminderLabel(mode: String): String = when (mode) {
     "ALARM" -> "闹钟"
     else -> "无"
 }
+
+// ---------- 桌面小组件（跨 ROM pin） ----------
+
+/** 双击防抖（毫秒）：requestPin 本身立即返回，防的只是快速连点 */
+private const val WIDGET_PIN_DEBOUNCE_MS = 2_000L
+private const val WIDGET_REQUESTED = "已请求系统添加小组件。若稍后未弹出放置面板，说明此桌面不支持自动添加。"
+private const val WIDGET_ALREADY = "小组件已在桌面，可长按调整大小。"
+private const val WIDGET_UNSUPPORTED = "此设备不支持自动添加小组件。"

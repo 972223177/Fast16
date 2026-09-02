@@ -20,6 +20,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Fast16"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -73,6 +74,7 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/fast16_widget_info" />
         </receiver>
+
     </application>
 
 </manifest>
